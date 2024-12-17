@@ -227,7 +227,7 @@ class xenoichi(BaseBot):
             icecast_server = "77.221.149.86"
             icecast_port = 8000
             mount_point = "/stream"
-            username = "root"
+            username = "source"
             password = "teenparalich000"
             icecast_url = f"icecast://{username}:{password}@{icecast_server}:{icecast_port}{mount_point}"
 
