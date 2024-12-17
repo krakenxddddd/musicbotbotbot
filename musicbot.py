@@ -224,11 +224,11 @@ class xenoichi(BaseBot):
 
     def _stream_to__thread(self, mp3_file_path):
         try:
-            icecast_server = "77.221.149.86"
-            icecast_port = 8000
-            mount_point = "/stream"
-            username = "source"
-            password = "teenparalich000"
+            icecast_server = "live.radioking.com"
+            icecast_port = 80
+            mount_point = "/dfsadfasfdsa"
+            username = "Kraken_Kraken"
+            password = "Manager password"
             icecast_url = f"icecast://{username}:{password}@{icecast_server}:{icecast_port}{mount_point}"
 
            
