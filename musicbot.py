@@ -87,7 +87,7 @@ class xenoichi(BaseBot):
         await asyncio.sleep(3)
         self.ready = True
 
-    async def on_user_join(self, user: User) -> None:
+    async def on_user_join(self, user: User, position: Position | AnchorPosition) -> None:
         await self.highrise.send_whisper(user.id, "Welcome! I'm the DJ BOT")
         self.add_user_to_db(user.username)
 
