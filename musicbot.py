@@ -1,6 +1,4 @@
 import yt_dlp as youtube_dl
-from highrise import *
-from highrise.models import *
 import os
 import subprocess
 from highrise import BaseBot, User
@@ -72,7 +70,6 @@ class xenoichi(BaseBot):
         self.conn.close()
 
     async def on_start(self, session_metadata):
-        await self.highrise.walk_to(Position(16.5, 0.0, 20.5))
         print("Xenbot is armed and ready!")
         print("Bot is starting... cleaning up any active streams.")
         
@@ -87,7 +84,7 @@ class xenoichi(BaseBot):
         await asyncio.sleep(3)
         self.ready = True
 
-    async def on_user_join(self, user: User, position: Position | AnchorPosition) -> None:
+    async def on_user_join(self, user: User, position: Position) -> None:
         await self.highrise.send_whisper(user.id, "Welcome! I'm the DJ BOT")
         self.add_user_to_db(user.username)
 
@@ -128,6 +125,26 @@ class xenoichi(BaseBot):
         return username in self.admins
 
     async def on_chat(self, user: User, message: str) -> None:
+        if message.startswith('/cash'):
+            if user.username not in allowed_usernames:
+            await self.highrise.send_whisper(user.id, "\n❌ Это команда тебе не доступна!")
+            return
+            parts = message.split()
+            if len(parts) > 2:  # Check if username and amount are provided
+                target_username = parts[1].replace("@", "")
+                try:
+                    amount = int(parts[2])
+                    if amount > 0:
+                        self.update_user_balance(target_username, amount)
+                        await self.highrise.chat(f"Added {amount} units to @{target_username}'s balance.")
+                    else:
+                        await self.highrise.chat("Amount must be positive.")
+                except ValueError:
+                    await self.highrise.chat("Invalid amount. Please enter a number.")
+                except Exception as e:
+                    await self.highrise.chat(f"Error adding to @{target_username}'s balance: {e}")
+            else:
+                await self.highrise.chat("Usage: /cash @username amount") #Correct usage
         if message.startswith('/play '):
             if self.ready:
                 song_request = message[len('/play '):].strip()
@@ -150,7 +167,7 @@ class xenoichi(BaseBot):
 
     async def add_to_queue(self, song_request, owner):
 
-        await self.highrise.chat(f"Searching song request...")
+        await self.highrise.send_whisper(user.id, f"Searching song request...")
         file_path, title = await self.download_youtube_audio(song_request)
         if file_path and title:
             self.song_queue.append({'title': title, 'file_path': file_path, 'owner': owner})
@@ -212,7 +229,7 @@ class xenoichi(BaseBot):
     async def now_playing(self):
         if self.currently_playing_title:
             current_song_owner = self.current_song['owner'] if self.current_song else "Unknown"
-            await self.highrise.chat(f"Now playing: '{self.currently_playing_title}'\n\nRequested by @{current_song_owner}")
+            await self.highrise.send_whisper(user.id, f"Now playing: '{self.currently_playing_title}'\n\nRequested by @{current_song_owner}")
         else:
             await self.highrise.chat("No song is currently playing.")
 
@@ -359,3 +376,6 @@ class xenoichi(BaseBot):
 
     async def on_close(self):
         self.close_db()
+
+
+allowed_usernames = ["fedorballz", "Skara0"]
