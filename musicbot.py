@@ -228,7 +228,7 @@ class xenoichi(BaseBot):
             icecast_port = 80
             mount_point = "/dfsadfasfdsa"
             username = "Kraken_Kraken"
-            password = "Manager password"
+            password = "teenparalich000!"
             icecast_url = f"icecast://{username}:{password}@{icecast_server}:{icecast_port}{mount_point}"
 
            
