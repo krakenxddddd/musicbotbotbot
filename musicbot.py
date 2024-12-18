@@ -1,3 +1,5 @@
+from highrise import *
+from highrise.models import *
 import yt_dlp as youtube_dl
 import os
 import subprocess
@@ -136,15 +138,15 @@ class xenoichi(BaseBot):
                     amount = int(parts[2])
                     if amount > 0:
                         self.update_user_balance(target_username, amount)
-                        await self.highrise.chat(f"Added {amount} units to @{target_username}'s balance.")
+                        await self.highrise.send_whisper(user.id, f"Выдал {amount} ему @{target_username}'s на баланс")
                     else:
-                        await self.highrise.chat("Amount must be positive.")
+                        await self.highrise.send_whisper(user.id, "Amount must be positive.")
                 except ValueError:
-                    await self.highrise.chat("Invalid amount. Please enter a number.")
+                    await self.highrise.send_whisper(user.id, "Invalid amount. Please enter a number.")
                 except Exception as e:
-                    await self.highrise.chat(f"Error adding to @{target_username}'s balance: {e}")
+                    await self.highrise.send_whisper(user.id, f"Error adding to @{target_username}'s balance: {e}")
             else:
-                await self.highrise.chat("Usage: /cash @username amount") #Correct usage
+                await self.highrise.send_whisper(user.id, "Usage: /cash @username amount") #Correct usage
         if message.startswith('/play '):
             if self.ready:
                 song_request = message[len('/play '):].strip()
@@ -167,7 +169,7 @@ class xenoichi(BaseBot):
 
     async def add_to_queue(self, song_request, owner):
 
-        await self.highrise.send_whisper(user.id, f"Searching song request...")
+        await self.highrise.chat(f"Searching song request...")
         file_path, title = await self.download_youtube_audio(song_request)
         if file_path and title:
             self.song_queue.append({'title': title, 'file_path': file_path, 'owner': owner})
@@ -229,7 +231,7 @@ class xenoichi(BaseBot):
     async def now_playing(self):
         if self.currently_playing_title:
             current_song_owner = self.current_song['owner'] if self.current_song else "Unknown"
-            await self.highrise.send_whisper(user.id, f"Now playing: '{self.currently_playing_title}'\n\nRequested by @{current_song_owner}")
+            await self.highrise.chat(f"Now playing: '{self.currently_playing_title}'\n\nRequested by @{current_song_owner}")
         else:
             await self.highrise.chat("No song is currently playing.")
 
