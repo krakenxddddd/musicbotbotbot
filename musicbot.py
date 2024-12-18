@@ -8,7 +8,25 @@ import shutil
 
 from highrise.__main__ import BotDefinition, main, import_module, arun
 import time
-    
+import sqlite3
+
+# --- DATABASE SETUP ---
+db_path = "musicbot.db"
+
+def init_db():
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            balance INTEGER DEFAULT 10
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+init_db()
+
 # BOT SETTINGS #
 bot_file_name = "musicbot"
 bot_class_name = "xenoichi"
@@ -35,16 +53,21 @@ if __name__ == "__main__":
 class xenoichi(BaseBot):
     def __init__(self):
         super().__init__()
+        self.conn = sqlite3.connect(db_path)
+        self.cursor = self.conn.cursor()
         self.song_queue = []
         self.currently_playing = False
         self.skip_event = asyncio.Event()
         self.ffmpeg_process = None
         self.currently_playing_title = None
-        self.admins = {'fedorballz'}
+        self.admins = {'fedorballz'} # Add your admin usernames here
         self.ready = False
         self.play_lock = asyncio.Lock()
         self.play_task = None
         self.play_event = asyncio.Event()
+
+    def close_db(self):
+        self.conn.close()
 
     async def on_start(self, session_metadata):
         print("Xenbot is armed and ready!")
@@ -61,28 +84,70 @@ class xenoichi(BaseBot):
         await asyncio.sleep(3)
         self.ready = True
 
+    async def on_user_join(self, user: User, position: Position) -> None:
+        await self.highrise.send_whisper(user.id, "Welcome! I'm the DJ BOT")
+        self.add_user_to_db(user.username)
+
+
+    def add_user_to_db(self, username):
+        try:
+            self.cursor.execute("INSERT OR IGNORE INTO users (username) VALUES (?)", (username,))
+            self.conn.commit()
+        except sqlite3.Error as e:
+            print(f"Database error adding user: {e}")
+
+    def get_user_balance(self, username):
+        try:
+            self.cursor.execute("SELECT balance FROM users WHERE username = ?", (username,))
+            result = self.cursor.fetchone()
+            return result[0] if result else 0
+        except sqlite3.Error as e:
+            print(f"Database error getting balance: {e}")
+            return 0
+
+    def update_user_balance(self, username, amount):
+        try:
+            self.cursor.execute("UPDATE users SET balance = balance + ? WHERE username = ?", (amount, username))
+            self.conn.commit()
+        except sqlite3.Error as e:
+            print(f"Database error updating balance: {e}")
+
+    async def on_tip(self, sender: User, receiver: User, tip: CurrencyItem) -> None:
+        if receiver.username == "KrakenDJ":  # Check if the tip is for the bot
+            try:
+                # Reduce sender's balance
+                self.update_user_balance(sender.username, tip.amount)
+                await self.highrise.chat(f"Thank you @{sender.username} for the tip of {tip.amount} units!")
+            except Exception as e:
+                await self.highrise.chat(f"Error processing tip: {e}") # Handle potential errors
+
     def is_admin(self, username):
         return username in self.admins
 
     async def on_chat(self, user: User, message: str) -> None:
-
         if message.startswith('/play '):
-            song_request = message[len('/play '):].strip()
-
             if self.ready:
-                await self.add_to_queue(song_request, user.username)
+                song_request = message[len('/play '):].strip()
+                cost = 10
+                balance = self.get_user_balance(user.username)
+                if balance >= cost:
+                    self.update_user_balance(user.username, -cost)
+                    await self.add_to_queue(song_request, user.username)
+                else:
+                    await self.highrise.send_whisper(user.id, f"Insufficient balance. The song costs {cost} units. Your current balance is {balance}.")
             else:
-                await self.highrise.chat("Bot is loading. Please wait.") 
-
+                await self.highrise.chat("Bot is loading. Please wait.")
+        elif message.startswith('/balance'):
+            balance = self.get_user_balance(user.username)
+            await self.highrise.send_whisper(user.id, f"Your balance: {balance}")
         elif message.startswith('/skip'):
-            await self.skip_song(user)  
-
+            await self.skip_song(user)
         elif message.startswith('/np'):
             await self.now_playing()
 
     async def add_to_queue(self, song_request, owner):
 
-        await self.highrise.chat("Searching song request...")
+        await self.highrise.send_whisper(user.id, f"Searching song request...")
         file_path, title = await self.download_youtube_audio(song_request)
         if file_path and title:
             self.song_queue.append({'title': title, 'file_path': file_path, 'owner': owner})
@@ -144,14 +209,7 @@ class xenoichi(BaseBot):
     async def now_playing(self):
         if self.currently_playing_title:
             current_song_owner = self.current_song['owner'] if self.current_song else "Unknown"
-            await self.highrise.chat(f"Now playing: '{self.currently_playing_title}'\n\nRequested by @{current_song_owner}")
-        else:
-            await self.highrise.chat("No song is currently playing.")
-
-    async def now_playing(self):
-        if self.currently_playing_title:
-            current_song_owner = self.current_song['owner'] if self.current_song else "Unknown"
-            await self.highrise.chat(f"Now playing: '{self.currently_playing_title}'\n\nRequested by @{current_song_owner}")
+            await self.highrise.send_whisper(user.id, f"Now playing: '{self.currently_playing_title}'\n\nRequested by @{current_song_owner}")
         else:
             await self.highrise.chat("No song is currently playing.")
 
@@ -295,3 +353,6 @@ class xenoichi(BaseBot):
             self.ffmpeg_process = None
         else:
             print("No active stream to stop.")
+
+    async def on_close(self):
+        self.close_db()
