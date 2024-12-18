@@ -150,7 +150,7 @@ class xenoichi(BaseBot):
 
     async def add_to_queue(self, song_request, owner):
 
-        await self.highrise.send_whisper(user.id, f"Searching song request...")
+        await self.highrise.chat(f"Searching song request...")
         file_path, title = await self.download_youtube_audio(song_request)
         if file_path and title:
             self.song_queue.append({'title': title, 'file_path': file_path, 'owner': owner})
