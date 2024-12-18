@@ -1,4 +1,6 @@
 import yt_dlp as youtube_dl
+from highrise import *
+from highrise.models import *
 import os
 import subprocess
 from highrise import BaseBot, User
