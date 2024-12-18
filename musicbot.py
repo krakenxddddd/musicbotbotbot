@@ -212,7 +212,7 @@ class xenoichi(BaseBot):
     async def now_playing(self):
         if self.currently_playing_title:
             current_song_owner = self.current_song['owner'] if self.current_song else "Unknown"
-            await self.highrise.send_whisper(user.id, f"Now playing: '{self.currently_playing_title}'\n\nRequested by @{current_song_owner}")
+            await self.highrise.chat(f"Now playing: '{self.currently_playing_title}'\n\nRequested by @{current_song_owner}")
         else:
             await self.highrise.chat("No song is currently playing.")
 
