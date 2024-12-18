@@ -70,6 +70,7 @@ class xenoichi(BaseBot):
         self.conn.close()
 
     async def on_start(self, session_metadata):
+        await self.highrise.walk_to(Position(16.5, 0.0, 20.5))
         print("Xenbot is armed and ready!")
         print("Bot is starting... cleaning up any active streams.")
         
@@ -84,7 +85,7 @@ class xenoichi(BaseBot):
         await asyncio.sleep(3)
         self.ready = True
 
-    async def on_user_join(self, user: User, position: Position) -> None:
+    async def on_user_join(self, user: User) -> None:
         await self.highrise.send_whisper(user.id, "Welcome! I'm the DJ BOT")
         self.add_user_to_db(user.username)
 
