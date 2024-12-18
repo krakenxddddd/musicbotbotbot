@@ -127,8 +127,8 @@ class xenoichi(BaseBot):
     async def on_chat(self, user: User, message: str) -> None:
         if message.startswith('/cash'):
             if user.username not in allowed_usernames:
-            await self.highrise.send_whisper(user.id, "\n❌ Это команда тебе не доступна!")
-            return
+                await self.highrise.send_whisper(user.id, "\n❌ Это команда тебе не доступна!")
+                return
             parts = message.split()
             if len(parts) > 2:  # Check if username and amount are provided
                 target_username = parts[1].replace("@", "")
