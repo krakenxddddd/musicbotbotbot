@@ -62,7 +62,7 @@ class xenoichi(BaseBot):
         self.skip_event = asyncio.Event()
         self.ffmpeg_process = None
         self.currently_playing_title = None
-        self.admins = {'fedorballz'} # Add your admin usernames here
+        self.admins = {'fedorballz', 'Skara0'} # Add your admin usernames here
         self.ready = False
         self.play_lock = asyncio.Lock()
         self.play_task = None
@@ -72,6 +72,8 @@ class xenoichi(BaseBot):
         self.conn.close()
 
     async def on_start(self, session_metadata):
+        await self.highrise.walk_to(Position(16.5, 0.0, 20.5))
+
         print("Xenbot is armed and ready!")
         print("Bot is starting... cleaning up any active streams.")
         
