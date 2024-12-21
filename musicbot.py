@@ -52,6 +52,19 @@ if __name__ == "__main__":
         time.sleep(1)       
         continue
 
+
+messages_dict_dj = {
+    "greeting1": "\n🎵 Включаем музыку!  Добро пожаловать к нашему DJ-боту!\n\n🎧 Закажи песню командой /play [название песни].\n",
+    "greeting2": "\n🎶 Привет!  Готов танцевать?  Запускай музыку!\n\n🎵 Используй команду /play [название песни], чтобы добавить трек в очередь.\n",
+    "greeting3": "\n🎤 DJ-бот в сети!  Заказывай свои любимые песни!\n\n🎶 Отправь чаевые, чтобы пополнить баланс и заказать песню\n",
+    "balance_reminder": "\n💰 Проверь свой баланс командой /bal.\n\n🎧 Не забудь, что за каждую песню списывается 10 голды!\n",
+    "tip_reminder": "\n✨ Хочешь поддержать бота?  Отправь чаевые в размере 10г и закажи песню\n\n🎵  /play [название песни]!\n",
+    "command_list": "\nСписок команд:\n\n/play [название песни] - Заказать песню\n/balance - Проверить баланс\n/np - Узнать название трека\nОтправь чаевые, чтобы пополнить баланс",
+
+}
+
+
+
 class xenoichi(BaseBot):
     def __init__(self):
         super().__init__()
@@ -71,7 +84,17 @@ class xenoichi(BaseBot):
     def close_db(self):
         self.conn.close()
 
+    async def repeat_jackpot_rules(self):
+        messages = list(self.messages_dict_dj.values()) # Get all messages
+        message_index = 0
+        while True:
+            message = messages[message_index]
+            await self.highrise.chat(message)
+            message_index = (message_index + 1) % len(messages) # Cycle through messages
+            await asyncio.sleep(60)
+
     async def on_start(self, session_metadata):
+        asyncio.create_task(self.repeat_jackpot_rules())
         await self.highrise.walk_to(Position(16.5, 0.0, 20.5))
 
         print("Xenbot is armed and ready!")
@@ -89,9 +112,8 @@ class xenoichi(BaseBot):
         self.ready = True
 
     async def on_user_join(self, user: User, position: Position) -> None:
-        await self.highrise.send_whisper(user.id, "Welcome! I'm the DJ BOT")
+        await self.highrise.send_whisper(user.id, "Список команд:\n\n/play [название песни] - Заказать песню\n/balance - Проверить баланс\n/np - Узнать название трека\nОтправь чаевые, чтобы пополнить баланс")
         self.add_user_to_db(user.username)
-
 
     def add_user_to_db(self, username):
         try:
@@ -121,7 +143,7 @@ class xenoichi(BaseBot):
             try:
                 # Reduce sender's balance
                 self.update_user_balance(sender.username, tip.amount)
-                await self.highrise.chat(f"Thank you @{sender.username} for the tip of {tip.amount} units!")
+                await self.highrise.chat(f"@{sender.username} пополнил баланс на {tip.amount} голды!")
             except Exception as e:
                 await self.highrise.chat(f"Error processing tip: {e}") # Handle potential errors
 
@@ -140,7 +162,7 @@ class xenoichi(BaseBot):
                     amount = int(parts[2])
                     if amount > 0:
                         self.update_user_balance(target_username, amount)
-                        await self.highrise.send_whisper(user.id, f"Выдал {amount} ему @{target_username}'s на баланс")
+                        await self.highrise.send_whisper(user.id, f"Выдал {amount} ему @{target_username} на баланс")
                     else:
                         await self.highrise.send_whisper(user.id, "Amount must be positive.")
                 except ValueError:
@@ -158,10 +180,10 @@ class xenoichi(BaseBot):
                     self.update_user_balance(user.username, -cost)
                     await self.add_to_queue(song_request, user.username)
                 else:
-                    await self.highrise.send_whisper(user.id, f"Insufficient balance. The song costs {cost} units. Your current balance is {balance}.")
+                    await self.highrise.send_whisper(user.id, f"\n❌Недостаточно средств для запроса песни. Нужно {cost} голды.\n\nВаш баланс: {balance}.")
             else:
                 await self.highrise.chat("Bot is loading. Please wait.")
-        elif message.startswith('/balance'):
+        elif message.startswith('/bal'):
             balance = self.get_user_balance(user.username)
             await self.highrise.send_whisper(user.id, f"Your balance: {balance}")
         elif message.startswith('/skip'):
@@ -171,11 +193,11 @@ class xenoichi(BaseBot):
 
     async def add_to_queue(self, song_request, owner):
 
-        await self.highrise.chat(f"Searching song request...")
+        await self.highrise.chat(f"Ищу песню... Пожалуйста, подождите.")
         file_path, title = await self.download_youtube_audio(song_request)
         if file_path and title:
             self.song_queue.append({'title': title, 'file_path': file_path, 'owner': owner})
-            await self.highrise.chat(f"Added to queue: '{title}' \n\nRequested by @{owner}")
+            await self.highrise.chat(f"Добавлено в очередь: '{title}' \n\nВключил: @{owner}")
             
             if not self.play_task or self.play_task.done():
                 print("Playback loop has been created.")
@@ -233,7 +255,7 @@ class xenoichi(BaseBot):
     async def now_playing(self):
         if self.currently_playing_title:
             current_song_owner = self.current_song['owner'] if self.current_song else "Unknown"
-            await self.highrise.chat(f"Now playing: '{self.currently_playing_title}'\n\nRequested by @{current_song_owner}")
+            await self.highrise.chat(f"Сейчас играет: '{self.currently_playing_title}'\n\nВключил: @{current_song_owner}")
         else:
             await self.highrise.chat("No song is currently playing.")
 
@@ -344,7 +366,7 @@ class xenoichi(BaseBot):
                 await self.highrise.chat(f"@{user.username} skipped the song.")
   
             else:
-                await self.highrise.chat("Only the requester of the song or an admin can skip it.")
+                await self.highrise.chat("Только администраторы могут пропускать песни.")
         else:
             await self.highrise.chat("No song is currently playing to skip.")
 
