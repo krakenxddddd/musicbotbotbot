@@ -77,7 +77,7 @@ class xenoichi(BaseBot):
     "greeting3": "\n🎤 DJ-бот в сети!  Заказывай свои любимые песни!\n\n🎶 Отправь чаевые, чтобы пополнить баланс и заказать песню\n",
     "balance_reminder": "\n💰 Проверь свой баланс командой /bal.\n\n🎧 Не забудь, что за каждую песню списывается 10 голды!\n",
     "tip_reminder": "\n✨ Хочешь поддержать бота?  Отправь чаевые в размере 10г и закажи песню\n\n🎵  /play [название песни]!\n",
-    "command_list": "\nСписок команд:\n\n/play [название песни] - Заказать песню\n/balance - Проверить баланс\n/np - Узнать название трека\nОтправь чаевые, чтобы пополнить баланс",
+    "command_list": "\nСписок команд:\n\n/play [название песни] - Заказать песню\n/bal - Проверить баланс\n/np - Узнать название трека\n/q - узнать очередь\nОтправь чаевые, чтобы пополнить баланс",
 
 }
 
@@ -110,7 +110,7 @@ class xenoichi(BaseBot):
         self.ready = True
 
     async def on_user_join(self, user: User, position: Position) -> None:
-        await self.highrise.send_whisper(user.id, "Список команд:\n\n/play [название песни] - Заказать песню\n/balance - Проверить баланс\n/np - Узнать название трека\nОтправь чаевые, чтобы пополнить баланс")
+        await self.highrise.send_whisper(user.id, "Список команд:\n\n/play [название песни] - Заказать песню\n/bal - Проверить баланс\n/np - Узнать название трека\n/q - узнать очередь\nОтправь чаевые, чтобы пополнить баланс")
         self.add_user_to_db(user.username)
 
     def add_user_to_db(self, username):
@@ -160,15 +160,15 @@ class xenoichi(BaseBot):
                     amount = int(parts[2])
                     if amount > 0:
                         self.update_user_balance(target_username, amount)
-                        await self.highrise.send_whisper(user.id, f"Выдал {amount} ему @{target_username} на баланс")
+                        await self.highrise.send_whisper(user.id, f"Выдал {amount} @{target_username} на баланс")
                     else:
-                        await self.highrise.send_whisper(user.id, "Amount must be positive.")
+                        await self.highrise.send_whisper(user.id, "Сумма должна быть положительной.")
                 except ValueError:
-                    await self.highrise.send_whisper(user.id, "Invalid amount. Please enter a number.")
+                    await self.highrise.send_whisper(user.id, "Неверная сумма. Пожалуйста, введите число.")
                 except Exception as e:
-                    await self.highrise.send_whisper(user.id, f"Error adding to @{target_username}'s balance: {e}")
+                    await self.highrise.send_whisper(user.id, f"Ошибка при добавлении на баланс @{target_username}: {e}")
             else:
-                await self.highrise.send_whisper(user.id, "Usage: /cash @username amount") #Correct usage
+                await self.highrise.send_whisper(user.id, "Используй: /cash @username amount") #Correct usage
         if message.startswith('/play '):
             if self.ready:
                 song_request = message[len('/play '):].strip()
@@ -180,10 +180,18 @@ class xenoichi(BaseBot):
                 else:
                     await self.highrise.send_whisper(user.id, f"\n❌Недостаточно средств для запроса песни. Нужно {cost} голды.\n\nВаш баланс: {balance}.")
             else:
-                await self.highrise.chat("Bot is loading. Please wait.")
+                await self.highrise.chat("Бот загружается. Подождите.")
+        if message.startswith('/q'):
+
+            page_number = 1
+            try:
+                page_number = int(message.split(' ')[1])
+            except (IndexError, ValueError):
+                pass
+            await self.check_queue(page_number)
         elif message.startswith('/bal'):
             balance = self.get_user_balance(user.username)
-            await self.highrise.send_whisper(user.id, f"Your balance: {balance}")
+            await self.highrise.send_whisper(user.id, f"Ваш баланс: {balance}")
         elif message.startswith('/skip'):
             await self.skip_song(user)
         elif message.startswith('/np'):
@@ -202,6 +210,47 @@ class xenoichi(BaseBot):
                 self.play_task = asyncio.create_task(self.playback_loop())
 
             self.play_event.set()
+
+    async def check_queue(self, page_number=1):
+
+        try:
+
+            songs_per_page = 2
+            total_songs = len(self.song_queue)
+            total_pages = (total_songs + songs_per_page - 1) // songs_per_page
+
+            if total_songs == 0:
+                await self.highrise.chat("В настоящее время очередь пуста.")
+                return
+
+            if page_number < 1 or page_number > total_pages:
+                await self.highrise.chat("Неверный номер страницы.")
+                return
+
+            queue_message = f"В очереди есть {total_songs} песни (Страница {page_number}/{total_pages}):\n\n"
+            start_index = (page_number - 1) * songs_per_page
+            end_index = min(start_index + songs_per_page, total_songs)
+
+            for index, song in enumerate(self.song_queue[start_index:end_index], start=start_index + 1):
+
+                # Get the duration, default to 0 if not available
+                duration = song.get('duration', 0)
+
+                # Format the duration as MM:SS
+                duration_minutes = int(duration // 60)
+                duration_seconds = int(duration % 60)
+                formatted_duration = f"{duration_minutes}:{duration_seconds:02d}"
+
+                queue_message += f"{index}. '{song['title']}' ({formatted_duration}) req by @{song['owner']}\n"
+
+            await self.highrise.chat(queue_message)
+
+            if page_number < total_pages:
+                await self.highrise.chat(f"Используйте '/q {page_number + 1}' для просмотра следующей страницы.")
+
+        except Exception as e:
+            # Handle any error that occurs
+            await self.highrise.chat(f"Произошла ошибка: {str(e)}")
 
     async def download_youtube_audio(self, song_request):
         """Downloads audio from YouTube and returns the file path and title, skipping if the file is already downloaded."""
@@ -253,9 +302,10 @@ class xenoichi(BaseBot):
     async def now_playing(self):
         if self.currently_playing_title:
             current_song_owner = self.current_song['owner'] if self.current_song else "Unknown"
-            await self.highrise.chat(f"Сейчас играет: '{self.currently_playing_title}'\n\nВключил: @{current_song_owner}")
+            asyncio.sleep(2)
+            await self.highrise.chat(f"Сейчас играет: '{self.currently_playing_title}'\n\nВключил @{current_song_owner}")
         else:
-            await self.highrise.chat("No song is currently playing.")
+            await self.highrise.chat("В настоящее время не играет ни одна песня.")
 
     async def playback_loop(self):
         while True:
@@ -273,7 +323,7 @@ class xenoichi(BaseBot):
                 song_owner = next_song['owner']
                 file_path = next_song['file_path']
 
-                await self.highrise.chat(f"Up Next: '{song_title}'\n\nRequested by @{song_owner}")
+                await self.highrise.chat(f"Далее: '{song_title}'\n\nВключил @{song_owner}")
                 print(f"Playing: {song_title}")
 
                 mp3_file_path = await self.convert_to_mp3(file_path)
@@ -290,7 +340,7 @@ class xenoichi(BaseBot):
         
             if not self.song_queue:
                 self.play_event.clear()  
-                await self.highrise.chat("The queue is now empty.")
+                await self.highrise.chat("Теперь очередь пуста.")
 
          
             self.currently_playing = False
@@ -361,12 +411,12 @@ class xenoichi(BaseBot):
                 if self.ffmpeg_process:
                     self.ffmpeg_process.terminate()
                 
-                await self.highrise.chat(f"@{user.username} skipped the song.")
+                await self.highrise.chat(f"@{user.username} пропустил песню.")
   
             else:
                 await self.highrise.chat("Только администраторы могут пропускать песни.")
         else:
-            await self.highrise.chat("No song is currently playing to skip.")
+            await self.highrise.chat("В настоящее время не воспроизводится ни одна песня, которую можно пропустить.")
 
     def clear_downloads_folder(self):
         """Deletes all files in the downloads folder."""
