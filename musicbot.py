@@ -149,6 +149,67 @@ class xenoichi(BaseBot):
         return username in self.admins
 
     async def on_chat(self, user: User, message: str) -> None:
+        if message.lower() == "/walletdj":
+            wallet = (await self.highrise.get_wallet()).content
+            await self.highrise.send_whisper(user.id, f"\nУ бота в кошельке {wallet[0].amount} {wallet[0].type}")
+        if message.lower().startswith("/tipmedj "):
+            if user.username not in allowed_usernames:
+                await self.highrise.send_whisper(user.id, "\n❌ Это команда тебе не доступна!")
+                return
+            parts = message.split(" ")
+            if len(parts) != 2:
+                await self.highrise.send_message(user.id, "Invalid command")
+                return
+            #checks if the amount is valid
+            try:
+                amount = int(parts[1])
+            except:
+                await self.highrise.chat("Invalid amount")
+                return
+            #checks if the bot has the amount
+            bot_wallet = await self.highrise.get_wallet()
+            bot_amount = bot_wallet.content[0].amount
+            if bot_amount <= amount:
+                await self.highrise.chat("Not enough funds")
+                return
+            #converts the amount to a string of bars and calculates the fee
+            """Possible values are: "gold_bar_1",
+            "gold_bar_5", "gold_bar_10", "gold_bar_50", 
+            "gold_bar_100", "gold_bar_500", 
+            "gold_bar_1k", "gold_bar_5000", "gold_bar_10k" """
+            bars_dictionary = {10000: "gold_bar_10k", 
+                               5000: "gold_bar_5000",
+                               1000: "gold_bar_1k",
+                               500: "gold_bar_500",
+                               100: "gold_bar_100",
+                               50: "gold_bar_50",
+                               10: "gold_bar_10",
+                               5: "gold_bar_5",
+                               1: "gold_bar_1"}
+            fees_dictionary = {10000: 1000,
+                               5000: 500,
+                               1000: 100,
+                               500: 50,
+                               100: 10,
+                               50: 5,
+                               10: 1,
+                               5: 1,
+                               1: 1}
+            #loop to check the highest bar that can be used and the amount of it needed
+            tip = []
+            total = 0
+            for bar in bars_dictionary:
+                if amount >= bar:
+                    bar_amount = amount // bar
+                    amount = amount % bar
+                    for i in range(bar_amount):
+                        tip.append(bars_dictionary[bar])
+                        total = bar+fees_dictionary[bar]
+            if total > bot_amount:
+                await self.highrise.chat("Not enough funds")
+                return
+            for bar in tip:
+                await self.highrise.tip_user(user.id, bar)
         if message.startswith('/cash'):
             if user.username not in allowed_usernames:
                 await self.highrise.send_whisper(user.id, "\n❌ Это команда тебе не доступна!")
