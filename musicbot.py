@@ -150,7 +150,7 @@ class xenoichi(BaseBot):
             try:
                 # Reduce sender's balance
                 self.update_user_balance(sender.username, tip.amount)
-                await self.highrise.chat(f"@{sender.username} пополнил баланс на {tip.amount} голды!")
+                await self.highrise.chat(f"@{sender.username} пополнил(a) баланс на {tip.amount} голды!")
             except Exception as e:
                 await self.highrise.chat(f"Error processing tip: {e}")  # Handle potential errors
 
@@ -271,27 +271,27 @@ class xenoichi(BaseBot):
                     await self.highrise.send_whisper(user.id, f"\n❌Недостаточно средств для запроса песни. Нужно {cost} голды.\n\nВаш баланс: {balance}.")
             else:
                 await self.highrise.chat("Бот загружается. Подождите.")
-      if message.startswith('/q'):
+        if message.startswith('/q'):
 
-          page_number = 1
-          try:
-              page_number = int(message.split(' ')[1])
-          except (IndexError, ValueError):
-              pass
-          await self.check_queue(page_number)
-      elif message.startswith('/bal'):
-          balance = self.get_user_balance(user.username)
-          await self.highrise.send_whisper(user.id, f"Ваш баланс: {balance}")
-      elif message.startswith('/skip'):
+            page_number = 1
+            try:
+                page_number = int(message.split(' ')[1])
+            except (IndexError, ValueError):
+                pass
+            await self.check_queue(page_number)
+        elif message.startswith('/bal'):
+            balance = self.get_user_balance(user.username)
+            await self.highrise.send_whisper(user.id, f"Ваш баланс: {balance}")
+        elif message.startswith('/skip'):
             await self.skip_song(user)
-      elif message.startswith('/np'):
-          await self.now_playing()
+        elif message.startswith('/np'):
+            await self.now_playing()
 
     def is_valid_url(self, url):
-      for prefix in self.valid_url_prefixes:
-        if url.startswith(prefix):
-           return True
-      return False
+        for prefix in self.valid_url_prefixes:
+            if url.startswith(prefix):
+                return True
+        return False
 
     async def add_to_queue(self, song_request, owner, search_by_title = True):
         await self.highrise.chat(f"Ищу песню... Пожалуйста, подождите.")
@@ -303,8 +303,8 @@ class xenoichi(BaseBot):
             await self.save_queue()
 
             if not self.play_task or self.play_task.done():
-              print("Playback loop has been created.")
-              self.play_task = asyncio.create_task(self.playback_loop())
+                print("Playback loop has been created.")
+                self.play_task = asyncio.create_task(self.playback_loop())
 
             self.play_event.set()
 
