@@ -120,7 +120,8 @@ class xenoichi(BaseBot):
         self.ready = True
 
     async def on_user_join(self, user: User, position: Position) -> None:
-        await self.highrise.send_whisper(user.id, "Список команд:\n\n/play [название песни] - Заказать песню по названию\n/linkplay [ссылка] - Заказать песню по ссылке Youtube или SoundCloud\n/skip - пропустить свой трек\n/bal - Проверить баланс\n/np - Узнать название трека\n/q - узнать очередь\n\nОтправь чаевые, чтобы пополнить баланс")
+        await self.highrise.send_whisper(user.id, f"\nСписок команд:\n\n/play [название песни] - Заказать песню по названию\n/linkplay [ссылка] - Заказать песню по ссылке Youtube или SoundCloud")
+        await self.highrise.send_whisper(user.id, f"\n/skip - пропустить свой трек\n/bal - Проверить баланс\n/np - Узнать название трека\n/q - узнать очередь\n\nОтправь чаевые, чтобы пополнить баланс")
         self.add_user_to_db(user.username)
 
     def add_user_to_db(self, username):
@@ -153,7 +154,7 @@ class xenoichi(BaseBot):
                 self.update_user_balance(sender.username, tip.amount)
                 await self.highrise.chat(f"@{sender.username} пополнил(a) баланс на {tip.amount} голды!")
             except Exception as e:
-                await self.highrise.chat(f"Error processing tip: {e}")  # Handle potential errors
+                print(f"Error processing tip: {e}")  # Handle potential errors
 
     def is_admin(self, username):
         return username in self.admins
@@ -345,7 +346,7 @@ class xenoichi(BaseBot):
 
         except Exception as e:
             # Handle any error that occurs
-            await self.highrise.chat(f"Произошла ошибка: {str(e)}")
+            print(f"Произошла ошибка: {str(e)}")
 
     async def download_youtube_audio(self, song_request, search_by_title = True):
         """Downloads audio from YouTube, trying link first, then search, and returns the file path and title."""
