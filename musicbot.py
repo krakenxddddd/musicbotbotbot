@@ -241,9 +241,13 @@ class xenoichi(BaseBot):
                     await self.highrise.send_whisper(user.id, f"Ошибка при добавлении на баланс @{target_username}: {e}")
             else:
                 await self.highrise.send_whisper(user.id, "Используй: /cash @username amount") #Correct usage
-        if message.startswith('/play '): # search by title
+        if message.startswith('/play '):
             if self.ready:
                 song_request = message[len('/play '):].strip()
+
+                if self.is_valid_url(song_request):
+                    await self.highrise.send_whisper(user.id, "Похоже, вы ввели ссылку. Пожалуйста, используйте команду /linkplay для воспроизведения по ссылке.")
+                    return
 
                 cost = 10
                 balance = self.get_user_balance(user.username)
@@ -297,9 +301,14 @@ class xenoichi(BaseBot):
 
     async def add_to_queue(self, song_request, owner, search_by_title = True):
         await self.highrise.chat(f"Ищу песню... Пожалуйста, подождите.")
-        file_path, title = await self.download_youtube_audio(song_request, search_by_title)
+        file_path, title, duration = await self.download_youtube_audio(song_request, search_by_title)
         if file_path and title:
-            self.song_queue.append({'title': title, 'file_path': file_path, 'owner': owner})
+            if duration > 240:
+                await self.highrise.send_whisper(owner, f"@{owner} трек '{title}' превышает 4 минуты и не может быть добавлен в очередь. Максимальная длительность трека 4 минуты.")
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                return
+            self.song_queue.append({'title': title, 'file_path': file_path, 'owner': owner, 'duration': duration})
             await self.highrise.chat(f"Добавлено в очередь: '{title}' \n\nВключил: @{owner}")
            
             await self.save_queue()
@@ -383,7 +392,7 @@ class xenoichi(BaseBot):
 
                 if os.path.exists(file_path):
                     print(f"The file '{file_path}' already exists, skipping download.")
-                    return file_path, title
+                    return file_path, title, info['duration']
                 
                 info = ydl.extract_info(song_request, download=True)
                 if 'entries' in info:
@@ -393,10 +402,10 @@ class xenoichi(BaseBot):
                 file_extension = info['ext']
                 file_path = f"downloads/{video_id}.{file_extension}"
                 print(f"Downloaded: {file_path} with title: {title}")
-                return file_path, title
+                return file_path, title, info['duration']
         except Exception as e:
               print(f"Error downloading the song: {e}")
-              return None, None
+              return None, None, 0
 
 
     async def now_playing(self):
