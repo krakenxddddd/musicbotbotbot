@@ -301,23 +301,34 @@ class xenoichi(BaseBot):
 
     async def add_to_queue(self, song_request, owner, search_by_title = True):
         await self.highrise.chat(f"Ищу песню... Пожалуйста, подождите.")
-        file_path, title, duration = await self.download_youtube_audio(song_request, search_by_title)
+        try:
+            file_path, title, duration, is_playlist = await self.download_youtube_audio(song_request, search_by_title)
+        except Exception as e:
+            print(f"Error while downloading: {e}")
+            await self.highrise.send_whisper(owner, f"Произошла ошибка при скачивании трека, попробуйте позже.")
+            return
+
         if file_path and title:
-            if duration > 240:
-                await self.highrise.chat(f"\n@{owner} трек '{title}' превышает 4 минуты и не может быть добавлен в очередь.\n\nМаксимальная длительность трека 4 минуты.")
+           if is_playlist:
+              await self.highrise.send_whisper(owner, f"Плейлисты не поддерживаются, я могу скачать только один трек. @{owner}")
+              if os.path.exists(file_path):
+                  os.remove(file_path)
+              return
+           if duration > 240:
+                await self.highrise.send_whisper(owner, f"@{owner} трек '{title}' превышает 4 минуты и не может быть добавлен в очередь.\n\nМаксимальная длительность трека 4 минуты.")
                 if os.path.exists(file_path):
                     os.remove(file_path)
                 return
-            self.song_queue.append({'title': title, 'file_path': file_path, 'owner': owner, 'duration': duration})
-            await self.highrise.chat(f"Добавлено в очередь: '{title}' \n\nВключил: @{owner}")
+           self.song_queue.append({'title': title, 'file_path': file_path, 'owner': owner, 'duration': duration})
+           await self.highrise.chat(f"Добавлено в очередь: '{title}' \n\nВключил: @{owner}")
            
-            await self.save_queue()
+           await self.save_queue()
 
-            if not self.play_task or self.play_task.done():
-                print("Playback loop has been created.")
-                self.play_task = asyncio.create_task(self.playback_loop())
+           if not self.play_task or self.play_task.done():
+               print("Playback loop has been created.")
+               self.play_task = asyncio.create_task(self.playback_loop())
 
-            self.play_event.set()
+           self.play_event.set()
 
     async def check_queue(self, page_number=1):
         try:
@@ -383,6 +394,8 @@ class xenoichi(BaseBot):
                     info = ydl.extract_info(song_request, download = False)
 
                     if 'entries' in info:
+                        if len(info['entries']) > 1:
+                           return None, None, 0, True
                         info = info['entries'][0]
 
                     video_id = info['id']
@@ -392,20 +405,22 @@ class xenoichi(BaseBot):
 
                 if os.path.exists(file_path):
                     print(f"The file '{file_path}' already exists, skipping download.")
-                    return file_path, title, info['duration']
+                    return file_path, title, info['duration'], False
                 
                 info = ydl.extract_info(song_request, download=True)
                 if 'entries' in info:
+                    if len(info['entries']) > 1:
+                        return None, None, 0, True
                     info = info['entries'][0]
 
                 video_id = info['id']
                 file_extension = info['ext']
                 file_path = f"downloads/{video_id}.{file_extension}"
                 print(f"Downloaded: {file_path} with title: {title}")
-                return file_path, title, info['duration']
+                return file_path, title, info['duration'], False
         except Exception as e:
               print(f"Error downloading the song: {e}")
-              return None, None, 0
+              return None, None, 0, False
 
 
     async def now_playing(self):
