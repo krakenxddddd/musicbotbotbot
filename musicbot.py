@@ -304,7 +304,7 @@ class xenoichi(BaseBot):
         file_path, title, duration = await self.download_youtube_audio(song_request, search_by_title)
         if file_path and title:
             if duration > 240:
-                await self.highrise.send_whisper(owner, f"@{owner} трек '{title}' превышает 4 минуты и не может быть добавлен в очередь. Максимальная длительность трека 4 минуты.")
+                await self.highrise.chat(f"\n@{owner} трек '{title}' превышает 4 минуты и не может быть добавлен в очередь.\n\nМаксимальная длительность трека 4 минуты.")
                 if os.path.exists(file_path):
                     os.remove(file_path)
                 return
