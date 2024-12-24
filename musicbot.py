@@ -305,17 +305,18 @@ class xenoichi(BaseBot):
             file_path, title, duration, is_playlist = await self.download_youtube_audio(song_request, search_by_title)
         except Exception as e:
             print(f"Error while downloading: {e}")
-            await self.highrise.send_whisper(owner, f"Произошла ошибка при скачивании трека, попробуйте позже.")
+            await self.highrise.chat(f"Произошла ошибка при скачивании трека, попробуйте позже.")
             return
 
         if file_path and title:
            if is_playlist:
-              await self.highrise.send_whisper(owner, f"Плейлисты не поддерживаются, я могу скачать только один трек. @{owner}")
+              await asyncio.sleep(2)
+              await self.highrise.chat(f"Плейлисты не поддерживаются, я могу скачать только один трек. @{owner}")
               if os.path.exists(file_path):
                   os.remove(file_path)
               return
            if duration > 240:
-                await self.highrise.send_whisper(owner, f"@{owner} трек '{title}' превышает 4 минуты и не может быть добавлен в очередь.\n\nМаксимальная длительность трека 4 минуты.")
+                await self.highrise.chat(f"@{owner} трек '{title}' превышает 4 минуты и не может быть добавлен в очередь.\n\nМаксимальная длительность трека 4 минуты.")
                 if os.path.exists(file_path):
                     os.remove(file_path)
                 return
