@@ -82,6 +82,7 @@ class xenoichi(BaseBot):
         self.play_event = asyncio.Event()
         self.valid_url_prefixes = ['https://www.youtube.com/', 'https://youtube.com/', 'https://youtu.be/', "https://on.soundcloud.com/", "https://soundcloud.com"] #Added valid prefixes
         self.current_position_ms = 0
+        self.start_time_ms = None
 
     def close_db(self):
         self.conn.close()
@@ -437,8 +438,8 @@ class xenoichi(BaseBot):
             song_duration = self.current_song['duration'] if self.current_song else 0
             
             current_position = 0
-            if hasattr(self, 'current_position_ms') and isinstance(self.current_position_ms, (int, float)):
-              current_position = int(self.current_position_ms) // 1000
+            if hasattr(self, 'current_position_ms') and hasattr(self, 'start_time_ms') and isinstance(self.current_position_ms, (int, float)) and isinstance(self.start_time_ms, (int, float)):
+                current_position = int(self.current_position_ms - self.start_time_ms) // 1000
 
             progress_bar = self.create_progress_bar(current_position, song_duration, 20)
             
@@ -551,7 +552,7 @@ class xenoichi(BaseBot):
 
             if self.ffmpeg_process:
                 self.ffmpeg_process.terminate()
-                await self.ffmpeg_process.wait()  # Wait for termination
+                await self.ffmpeg_process.wait()
                 self.ffmpeg_process = None
 
             command = [
@@ -560,7 +561,7 @@ class xenoichi(BaseBot):
                 '-ar', '44100', '-ac', '2',
                 '-reconnect', '1', '-reconnect_streamed', '1',
                 '-reconnect_delay_max', '2',
-                '-progress', 'pipe:1',  # Pipe progress information to stdout
+                '-progress', 'pipe:1',
                 icecast_url
             ]
             
@@ -569,7 +570,8 @@ class xenoichi(BaseBot):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-
+            self.current_position_ms = 0
+            self.start_time_ms = None # Added start time
             while True:
                 line = await self.ffmpeg_process.stdout.readline()
                 if not line:
@@ -579,20 +581,29 @@ class xenoichi(BaseBot):
                      continue
                 line = line.decode('utf-8').strip()
                 if line.startswith("out_time_ms="):
-                    ms = int(line.split("=")[1])
-                    self.current_position_ms = ms
+                  ms = int(line.split("=")[1])
+                  self.current_position_ms = ms
+                  if self.start_time_ms is None:
+                    self.start_time_ms = ms # Set start time if not set yet
+
                 if line.startswith("progress=end"):
-                    break
+                   break
+
             if self.ffmpeg_process.returncode != 0:
                 print(f"FFmpeg process exited with code {self.ffmpeg_process.returncode}")
                 if self.ffmpeg_process.stderr:
                     error = await self.ffmpeg_process.stderr.read()
                     print(f"FFmpeg error: {error.decode('utf-8')}")
-                
-            self.ffmpeg_process = None
 
         except Exception as e:
             print(f"Error streaming to Radioking: {e}")
+        finally:
+            if self.ffmpeg_process:
+               if self.ffmpeg_process.returncode is None:
+                    self.ffmpeg_process.terminate()
+                    await self.ffmpeg_process.wait()
+               self.ffmpeg_process = None
+
 
 
     async def skip_song(self, user):
