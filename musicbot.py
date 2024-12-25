@@ -467,6 +467,7 @@ class xenoichi(BaseBot):
                 next_song = self.song_queue.pop(0)
                 self.current_song = next_song
                 self.currently_playing_title = next_song['title']
+                self.start_time_ms = None # Reset start time
 
                 song_title = next_song['title']
                 song_owner = next_song['owner']
@@ -499,6 +500,7 @@ class xenoichi(BaseBot):
 
             self.currently_playing = False
             self.currently_playing_title = None
+
 
     def create_progress_bar(self, current_position, total_duration, bar_length=20):
         if total_duration == 0:
@@ -603,7 +605,6 @@ class xenoichi(BaseBot):
                     self.ffmpeg_process.terminate()
                     await self.ffmpeg_process.wait()
                self.ffmpeg_process = None
-
 
 
     async def skip_song(self, user):
