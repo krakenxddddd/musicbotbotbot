@@ -81,6 +81,7 @@ class xenoichi(BaseBot):
         self.play_task = None
         self.play_event = asyncio.Event()
         self.valid_url_prefixes = ['https://www.youtube.com/', 'https://youtube.com/', 'https://youtu.be/', "https://on.soundcloud.com/", "https://soundcloud.com"] #Added valid prefixes
+        self.current_position_ms = 0
 
     def close_db(self):
         self.conn.close()
@@ -434,10 +435,7 @@ class xenoichi(BaseBot):
             current_song_owner = self.current_song['owner'] if self.current_song else "Unknown"
             song_duration = self.current_song['duration'] if self.current_song else 0
             
-            # Assuming the song is playing for a random time for demonstration purposes
-            # In real scenario we would track current position with the ffmpeg process
-            current_position = random.randint(0, int(song_duration)) if song_duration > 0 else 0 #Random number
-
+            current_position = self.current_position_ms // 1000 if hasattr(self, 'current_position_ms') else 0
             progress_bar = self.create_progress_bar(current_position, song_duration, 20)
             
             formatted_duration = self.format_time(song_duration)
@@ -452,6 +450,7 @@ class xenoichi(BaseBot):
             await self.highrise.chat(message)
         else:
             await self.highrise.chat("В настоящее время не играет ни одна песня.")
+
 
 
     async def playback_loop(self):
@@ -532,11 +531,11 @@ class xenoichi(BaseBot):
             return None
 
     async def stream(self, mp3_file_path):
-        with ThreadPoolExecutor() as executor:
-            future = executor.submit(self._stream_to__thread, mp3_file_path)
-            await asyncio.get_event_loop().run_in_executor(None, future.result)
+        """Streams the audio file to Icecast and tracks the current playback position."""
+        await asyncio.create_task(self._stream_to__thread(mp3_file_path))
 
-    def _stream_to__thread(self, mp3_file_path):
+
+    async def _stream_to__thread(self, mp3_file_path):
         try:
             icecast_server = "live.radioking.com"
             icecast_port = 80
@@ -547,20 +546,49 @@ class xenoichi(BaseBot):
 
             if self.ffmpeg_process:
                 self.ffmpeg_process.terminate()
-                self.ffmpeg_process.wait()
+                await self.ffmpeg_process.wait()  # Wait for termination
                 self.ffmpeg_process = None
 
             command = [
                 'ffmpeg', '-re', '-i', mp3_file_path,
                 '-f', 'mp3', '-acodec', 'libmp3lame', '-ab', '192k',
-                '-ar', '44100', '-ac', '2', '-reconnect', '1', '-reconnect_streamed', '1',
-                '-reconnect_delay_max', '2', icecast_url
+                '-ar', '44100', '-ac', '2',
+                '-reconnect', '1', '-reconnect_streamed', '1',
+                '-reconnect_delay_max', '2',
+                '-progress', 'pipe:1',  # Pipe progress information to stdout
+                icecast_url
             ]
+            
+            self.ffmpeg_process = await asyncio.create_subprocess_exec(
+                *command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
 
-            self.ffmpeg_process = subprocess.Popen(command)
-            self.ffmpeg_process.wait()
+            while True:
+                line = await self.ffmpeg_process.stdout.readline()
+                if not line:
+                  if self.ffmpeg_process.returncode is not None:
+                     break
+                  else:
+                     continue
+                line = line.decode('utf-8').strip()
+                if line.startswith("out_time_ms="):
+                    ms = int(line.split("=")[1])
+                    self.current_position_ms = ms
+                if line.startswith("progress=end"):
+                    break
+            if self.ffmpeg_process.returncode != 0:
+                print(f"FFmpeg process exited with code {self.ffmpeg_process.returncode}")
+                if self.ffmpeg_process.stderr:
+                    error = await self.ffmpeg_process.stderr.read()
+                    print(f"FFmpeg error: {error.decode('utf-8')}")
+                
+            self.ffmpeg_process = None
+
         except Exception as e:
             print(f"Error streaming to Radioking: {e}")
+
 
     async def skip_song(self, user):
         """Allows an admin or the requester of the current song to skip."""
