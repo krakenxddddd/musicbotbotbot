@@ -439,7 +439,7 @@ class xenoichi(BaseBot):
             
             current_position = 0
             if hasattr(self, 'current_position_ms') and hasattr(self, 'start_time_ms') and isinstance(self.current_position_ms, (int, float)) and isinstance(self.start_time_ms, (int, float)):
-                current_position = int(self.current_position_ms - self.start_time_ms) // 100000
+                current_position = int(self.current_position_ms - self.start_time_ms) // 10000000
 
             progress_bar = self.create_progress_bar(current_position, song_duration, 20)
             
