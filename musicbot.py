@@ -93,7 +93,7 @@ class xenoichi(BaseBot):
         "balance_reminder": "\n💰 Проверь свой баланс командой /bal\n\n🎧 Не забудь, что за каждую песню списывается 10 голды!\n",
         "tip_reminder": "\n✨ Хочешь поддержать бота?  Отправь чаевые в размере 10г и закажи песню\n\n🎵 /play [название песни] или /linkplay [ссылка Youtube или SoundCloud]\n",
         "command_list": "\nСписок команд:\n\n/play [название песни] - Заказать песню по названию\n/linkplay [ссылка] - Заказать песню по ссылке Youtube или SoundCloud",
-        "command_list2": "\nСписок команд: /skip - пропустить свой трек\n/bal - Проверить баланс\n/np - Узнать название трека\n/q - узнать очередь\n\nОтправь чаевые, чтобы пополнить баланс"
+        "command_list2": "\nСписок команд:\n\n/skip - пропустить свой трек\n/bal - Проверить баланс\n/np - Узнать название трека\n/q - узнать очередь\n\nОтправь чаевые, чтобы пополнить баланс"
     }
 
 
@@ -261,7 +261,7 @@ class xenoichi(BaseBot):
                 self.update_user_balance(user.username, -cost)
                 await self.add_to_queue(song_request, user.username, search_by_title = True)
             else:
-                await self.highrise.send_whisper(user.id, f"\n❌Недостаточно средств для запроса песни. Нужно {cost} голды.\n\nВаш баланс: {balance}.")
+                await self.highrise.send_whisper(user.id, f"\n❌ Недостаточно средств для запроса песни. Нужно {cost} голды.\n\nВаш баланс: {balance}.")
         if message.startswith('/linkplay '): # search by link
             song_request = message[len('/linkplay '):].strip()
 
@@ -276,7 +276,7 @@ class xenoichi(BaseBot):
                 self.update_user_balance(user.username, -cost)
                 await self.add_to_queue(song_request, user.username, search_by_title = False)
             else:
-                await self.highrise.send_whisper(user.id, f"\n❌Недостаточно средств для запроса песни. Нужно {cost} голды.\n\nВаш баланс: {balance}.")
+                await self.highrise.send_whisper(user.id, f"\n❌ Недостаточно средств для запроса песни. Нужно {cost} голды.\n\nВаш баланс: {balance}.")
         if message.startswith('/q'):
             page_number = 1
             try:
@@ -412,7 +412,7 @@ class xenoichi(BaseBot):
 
                 if os.path.exists(file_path):
                     print(f"The file '{file_path}' already exists, skipping download.")
-                    return file_path, title, info['duration'], False
+                    return file_path, title, int(info['duration']), False # Changed to int()
                 
                 info = ydl.extract_info(song_request, download=True)
                 if 'entries' in info:
@@ -424,10 +424,11 @@ class xenoichi(BaseBot):
                 file_extension = info['ext']
                 file_path = f"downloads/{video_id}.{file_extension}"
                 print(f"Downloaded: {file_path} with title: {title}")
-                return file_path, title, info['duration'], False
+                return file_path, title, int(info['duration']), False # Changed to int()
         except Exception as e:
               print(f"Error downloading the song: {e}")
               return None, None, 0, False
+
 
 
     async def now_playing(self):
@@ -435,7 +436,10 @@ class xenoichi(BaseBot):
             current_song_owner = self.current_song['owner'] if self.current_song else "Unknown"
             song_duration = self.current_song['duration'] if self.current_song else 0
             
-            current_position = self.current_position_ms // 1000 if hasattr(self, 'current_position_ms') else 0
+            current_position = 0
+            if hasattr(self, 'current_position_ms') and isinstance(self.current_position_ms, (int, float)):
+              current_position = int(self.current_position_ms) // 1000
+
             progress_bar = self.create_progress_bar(current_position, song_duration, 20)
             
             formatted_duration = self.format_time(song_duration)
@@ -450,6 +454,7 @@ class xenoichi(BaseBot):
             await self.highrise.chat(message)
         else:
             await self.highrise.chat("В настоящее время не играет ни одна песня.")
+
 
 
 
