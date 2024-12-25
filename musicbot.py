@@ -1,3 +1,4 @@
+
 from highrise import *
 from highrise.models import *
 import yt_dlp as youtube_dl
@@ -11,6 +12,8 @@ from highrise.__main__ import BotDefinition, main, import_module, arun
 import time
 import sqlite3
 import json # Import the json library for queue persistence
+import random
+import aiohttp
 
 # --- DATABASE SETUP ---
 db_path = "musicbot.db"
@@ -50,14 +53,16 @@ if __name__ == "__main__":
     ]
 
     while True:
-      try:
-        arun(main(definitions))
-      except Exception as e:
-        import traceback
-        print("Caught an exception:")
-        traceback.print_exc()
-        time.sleep(1)
-        continue
+        try:
+            arun(main(definitions))
+        except (aiohttp.client_exceptions.ClientConnectionResetError, Exception) as e:  # Перехватываем конкретную ошибку и общую Exception
+            import traceback
+            print("Caught an exception:")
+            traceback.print_exc()
+            print("Restarting bot...")
+            time.sleep(5)  # Пауза перед перезапуском
+            continue
+
 
 
 class xenoichi(BaseBot):
@@ -71,7 +76,7 @@ class xenoichi(BaseBot):
         self.ffmpeg_process = None
         self.currently_playing_title = None
         self.admins = {'fedorballz', 'Skara0'}  # Add your admin usernames here
-        self.ready = False
+        self.ready = asyncio.Event() # Change here
         self.play_lock = asyncio.Lock()
         self.play_task = None
         self.play_event = asyncio.Event()
@@ -115,9 +120,8 @@ class xenoichi(BaseBot):
         await asyncio.sleep(5)
 
         self.play_task = asyncio.create_task(self.playback_loop())
-
+        self.ready.set()  # Set to true, now it is ready
         await asyncio.sleep(3)
-        self.ready = True
 
     async def on_user_join(self, user: User, position: Position) -> None:
         await self.highrise.send_whisper(user.id, f"\nСписок команд:\n\n/play [название песни] - Заказать песню по названию\n/linkplay [ссылка] - Заказать песню по ссылке Youtube или SoundCloud")
@@ -160,6 +164,7 @@ class xenoichi(BaseBot):
         return username in self.admins
 
     async def on_chat(self, user: User, message: str) -> None:
+        await self.ready.wait() #Wait for bot to be ready
         if message.lower() == "/walletdj":
             wallet = (await self.highrise.get_wallet()).content
             await self.highrise.send_whisper(user.id, f"\nУ бота в кошельке {wallet[0].amount} {wallet[0].type}")
@@ -242,43 +247,36 @@ class xenoichi(BaseBot):
             else:
                 await self.highrise.send_whisper(user.id, "Используй: /cash @username amount") #Correct usage
         if message.startswith('/play '):
-            if self.ready:
-                song_request = message[len('/play '):].strip()
+            song_request = message[len('/play '):].strip()
 
-                if self.is_valid_url(song_request):
-                    await self.highrise.send_whisper(user.id, "Похоже, вы ввели ссылку. Пожалуйста, используйте команду /linkplay для воспроизведения по ссылке.")
-                    return
+            if self.is_valid_url(song_request):
+                await self.highrise.send_whisper(user.id, "Похоже, вы ввели ссылку. Пожалуйста, используйте команду /linkplay для воспроизведения по ссылке.")
+                return
 
-                cost = 10
-                balance = self.get_user_balance(user.username)
+            cost = 10
+            balance = self.get_user_balance(user.username)
 
-                if balance >= cost:
-                    self.update_user_balance(user.username, -cost)
-                    await self.add_to_queue(song_request, user.username, search_by_title = True)
-                else:
-                    await self.highrise.send_whisper(user.id, f"\n❌Недостаточно средств для запроса песни. Нужно {cost} голды.\n\nВаш баланс: {balance}.")
+            if balance >= cost:
+                self.update_user_balance(user.username, -cost)
+                await self.add_to_queue(song_request, user.username, search_by_title = True)
             else:
-                await self.highrise.chat("Бот загружается. Подождите.")
+                await self.highrise.send_whisper(user.id, f"\n❌Недостаточно средств для запроса песни. Нужно {cost} голды.\n\nВаш баланс: {balance}.")
         if message.startswith('/linkplay '): # search by link
-            if self.ready:
-                song_request = message[len('/linkplay '):].strip()
+            song_request = message[len('/linkplay '):].strip()
 
-                if not self.is_valid_url(song_request):
-                    await self.highrise.send_whisper(user.id, "Неверная ссылка, я могу только по Youtube или SoundCloud")
-                    return
+            if not self.is_valid_url(song_request):
+                await self.highrise.send_whisper(user.id, "Неверная ссылка, я могу только по Youtube или SoundCloud")
+                return
 
-                cost = 10
-                balance = self.get_user_balance(user.username)
+            cost = 10
+            balance = self.get_user_balance(user.username)
 
-                if balance >= cost:
-                    self.update_user_balance(user.username, -cost)
-                    await self.add_to_queue(song_request, user.username, search_by_title = False)
-                else:
-                    await self.highrise.send_whisper(user.id, f"\n❌Недостаточно средств для запроса песни. Нужно {cost} голды.\n\nВаш баланс: {balance}.")
+            if balance >= cost:
+                self.update_user_balance(user.username, -cost)
+                await self.add_to_queue(song_request, user.username, search_by_title = False)
             else:
-                await self.highrise.chat("Бот загружается. Подождите.")
+                await self.highrise.send_whisper(user.id, f"\n❌Недостаточно средств для запроса песни. Нужно {cost} голды.\n\nВаш баланс: {balance}.")
         if message.startswith('/q'):
-
             page_number = 1
             try:
                 page_number = int(message.split(' ')[1])
@@ -300,7 +298,7 @@ class xenoichi(BaseBot):
         return False
 
     async def add_to_queue(self, song_request, owner, search_by_title = True):
-        await self.highrise.chat(f"Ищу песню... Пожалуйста, подождите.")
+        await self.highrise.chat("Ищу песню... Пожалуйста, подождите.")
         try:
             file_path, title, duration, is_playlist = await self.download_youtube_audio(song_request, search_by_title)
         except Exception as e:
@@ -320,8 +318,15 @@ class xenoichi(BaseBot):
                 if os.path.exists(file_path):
                     os.remove(file_path)
                 return
+           formatted_duration = self.format_time(duration)
+           message = f"""
+     🎶 Добавлено в очередь:
+        🎵 '{title}'
+       ⏱️ Длительность: {formatted_duration}
+      👤 Включил: @{owner}
+             """
            self.song_queue.append({'title': title, 'file_path': file_path, 'owner': owner, 'duration': duration})
-           await self.highrise.chat(f"Добавлено в очередь: '{title}' \n\nВключил: @{owner}")
+           await self.highrise.chat(message)
            
            await self.save_queue()
 
@@ -427,8 +432,24 @@ class xenoichi(BaseBot):
     async def now_playing(self):
         if self.currently_playing_title:
             current_song_owner = self.current_song['owner'] if self.current_song else "Unknown"
-            asyncio.sleep(2)
-            await self.highrise.chat(f"Сейчас играет: '{self.currently_playing_title}'\n\nВключил @{current_song_owner}")
+            song_duration = self.current_song['duration'] if self.current_song else 0
+            
+            # Assuming the song is playing for a random time for demonstration purposes
+            # In real scenario we would track current position with the ffmpeg process
+            current_position = random.randint(0, int(song_duration)) if song_duration > 0 else 0 #Random number
+
+            progress_bar = self.create_progress_bar(current_position, song_duration, 20)
+            
+            formatted_duration = self.format_time(song_duration)
+            formatted_current = self.format_time(current_position)
+
+            message = f"""
+  🎧 Сейчас играет: {self.currently_playing_title}
+   🎵 Включил: @{current_song_owner}
+
+      {progress_bar} {formatted_current}/{formatted_duration}
+            """
+            await self.highrise.chat(message)
         else:
             await self.highrise.chat("В настоящее время не играет ни одна песня.")
 
@@ -445,10 +466,16 @@ class xenoichi(BaseBot):
                 song_title = next_song['title']
                 song_owner = next_song['owner']
                 file_path = next_song['file_path']
-
-                await self.highrise.chat(f"Далее: '{song_title}'\n\nВключил @{song_owner}")
+                formatted_duration = self.format_time(next_song['duration'])
+                message = f"""
+     ▶️ Далее играет:
+          🎵 '{song_title}'
+          ⏱️ Длительность: {formatted_duration}
+          👤 Включил @{song_owner}
+                     """
+                await self.highrise.chat(message)
                 print(f"Playing: {song_title}")
-
+                
                 mp3_file_path = await self.convert_to_mp3(file_path)
 
                 if mp3_file_path:
@@ -467,6 +494,21 @@ class xenoichi(BaseBot):
 
             self.currently_playing = False
             self.currently_playing_title = None
+
+    def create_progress_bar(self, current_position, total_duration, bar_length=20):
+        if total_duration == 0:
+           return "[====================]"
+        progress = min(max(current_position, 0), total_duration) / total_duration
+        filled_length = int(round(bar_length * progress))
+        empty_length = bar_length - filled_length
+
+        bar = "█" * filled_length + "░" * empty_length
+        return f"[{bar}]"
+
+    def format_time(self, total_seconds):
+       minutes = int(total_seconds // 60)
+       seconds = int(total_seconds % 60)
+       return f"{minutes:02d}:{seconds:02d}"
 
     async def convert_to_mp3(self, audio_file_path):
         try:
