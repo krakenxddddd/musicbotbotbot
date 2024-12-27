@@ -66,7 +66,7 @@ if __name__ == "__main__":
 
 
 class xenoichi(BaseBot):
-    def __init__(self):
+   def __init__(self):
         super().__init__()
         self.conn = sqlite3.connect(db_path)
         self.cursor = self.conn.cursor()
@@ -75,14 +75,15 @@ class xenoichi(BaseBot):
         self.skip_event = asyncio.Event()
         self.ffmpeg_process = None
         self.currently_playing_title = None
-        self.admins = {'fedorballz', 'Skara0'}  # Add your admin usernames here
-        self.ready = asyncio.Event() # Change here
+        self.admins = {'fedorballz', 'Skara0'}
+        self.ready = asyncio.Event()
         self.play_lock = asyncio.Lock()
         self.play_task = None
         self.play_event = asyncio.Event()
-        self.valid_url_prefixes = ['https://www.youtube.com/', 'https://youtube.com/', 'https://youtu.be/', "https://on.soundcloud.com/", "https://soundcloud.com"] #Added valid prefixes
+        self.valid_url_prefixes = ['https://www.youtube.com/', 'https://youtube.com/', 'https://youtu.be/', "https://on.soundcloud.com/", "https://soundcloud.com"]
         self.current_position_ms = 0
         self.start_time_ms = None
+        self.stream_stop_event = asyncio.Event() # Add stream_stop_event
 
     def close_db(self):
         self.conn.close()
@@ -430,8 +431,6 @@ class xenoichi(BaseBot):
               print(f"Error downloading the song: {e}")
               return None, None, 0, False
 
-
-
     async def now_playing(self):
         if self.currently_playing_title:
             current_song_owner = self.current_song['owner'] if self.current_song else "Unknown"
@@ -456,9 +455,6 @@ class xenoichi(BaseBot):
         else:
             await self.highrise.chat("В настоящее время не играет ни одна песня.")
 
-
-
-
     async def playback_loop(self):
         while True:
             await self.play_event.wait()
@@ -468,7 +464,7 @@ class xenoichi(BaseBot):
                 self.current_song = next_song
                 self.currently_playing_title = next_song['title']
                 self.start_time_ms = None # Reset start time
-
+                
                 song_title = next_song['title']
                 song_owner = next_song['owner']
                 file_path = next_song['file_path']
@@ -487,19 +483,23 @@ class xenoichi(BaseBot):
                 if mp3_file_path:
                     await self.stream(mp3_file_path)
 
+                    while self.ffmpeg_process and self.ffmpeg_process.returncode is None: #wait for stream to finish.
+                       await asyncio.sleep(0.1)
+
                     if os.path.exists(mp3_file_path):
                         os.remove(mp3_file_path)
                     if os.path.exists(file_path):
                         os.remove(file_path)
+                
+                await self.save_queue()
 
-                await self.save_queue() #Save after each song
-        
             if not self.song_queue:
                 self.play_event.clear()
                 await self.highrise.chat("Теперь очередь пуста.")
 
             self.currently_playing = False
             self.currently_playing_title = None
+
 
 
     def create_progress_bar(self, current_position, total_duration, bar_length=20):
@@ -543,7 +543,7 @@ class xenoichi(BaseBot):
         await asyncio.create_task(self._stream_to__thread(mp3_file_path))
 
 
-    async def _stream_to__thread(self, mp3_file_path):
+   async def _stream_to__thread(self, mp3_file_path):
         try:
             icecast_server = "live.radioking.com"
             icecast_port = 80
@@ -573,7 +573,8 @@ class xenoichi(BaseBot):
                 stderr=asyncio.subprocess.PIPE
             )
             self.current_position_ms = 0
-            self.start_time_ms = None # Added start time
+            self.start_time_ms = None
+            
             while True:
                 line = await self.ffmpeg_process.stdout.readline()
                 if not line:
@@ -587,10 +588,10 @@ class xenoichi(BaseBot):
                   self.current_position_ms = ms
                   if self.start_time_ms is None:
                     self.start_time_ms = ms # Set start time if not set yet
-
                 if line.startswith("progress=end"):
+                    break
+                if self.stream_stop_event.is_set():
                    break
-
             if self.ffmpeg_process.returncode != 0:
                 print(f"FFmpeg process exited with code {self.ffmpeg_process.returncode}")
                 if self.ffmpeg_process.stderr:
@@ -605,18 +606,20 @@ class xenoichi(BaseBot):
                     self.ffmpeg_process.terminate()
                     await self.ffmpeg_process.wait()
                self.ffmpeg_process = None
+        self.stream_stop_event.clear() # Clear the flag when the stream finishes
 
 
-    async def skip_song(self, user):
+
+   async def skip_song(self, user):
         """Allows an admin or the requester of the current song to skip."""
         if self.currently_playing:
            if self.is_admin(user.username) or (self.current_song and self.current_song['owner'] == user.username):
-               self.skip_event.set()
+               self.stream_stop_event.set()
                if self.ffmpeg_process:
                  self.ffmpeg_process.terminate()
                await self.highrise.chat(f"@{user.username} пропустил песню.")
            else:
-                await self.highrise.chat("Только администраторы могут пропускать песни.")
+                await self.highrise.chat("Только администраторы или запросившие песню могут пропускать песни.")
         else:
             await self.highrise.chat("В настоящее время не воспроизводится ни одна песня, которую можно пропустить.")
 
@@ -641,10 +644,9 @@ class xenoichi(BaseBot):
         if self.ffmpeg_process:
             print("Stopping active stream...")
             try:
+                self.stream_stop_event.set()
                 self.ffmpeg_process.terminate()
-                await asyncio.sleep(1)
-                if self.ffmpeg_process.poll() is None:
-                    self.ffmpeg_process.kill()
+                await self.ffmpeg_process.wait()
                 print("Stream terminated successfully.")
             except Exception as e:
                 print(f"Error while stopping stream: {e}")
