@@ -610,7 +610,7 @@ class xenoichi(BaseBot):
 
 
 
-   async def skip_song(self, user):
+    async def skip_song(self, user):
         """Allows an admin or the requester of the current song to skip."""
         if self.currently_playing:
             if self.is_admin(user.username) or (self.current_song and self.current_song['owner'] == user.username):
@@ -618,7 +618,7 @@ class xenoichi(BaseBot):
                 if self.ffmpeg_process:
                     self.ffmpeg_process.terminate()
                 await self.highrise.chat(f"@{user.username} пропустил песню.")
-           else:
+            else:
                 await self.highrise.chat("Только администраторы или запросившие песню могут пропускать песни.")
         else:
             await self.highrise.chat("В настоящее время не воспроизводится ни одна песня, которую можно пропустить.")
