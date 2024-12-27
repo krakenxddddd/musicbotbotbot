@@ -316,8 +316,8 @@ class xenoichi(BaseBot):
               if os.path.exists(file_path):
                   os.remove(file_path)
               return
-           if duration > 240:
-                await self.highrise.chat(f"@{owner} трек '{title}' превышает 4 минуты и не может быть добавлен в очередь.\n\nМаксимальная длительность трека 4 минуты.")
+           if duration > 300:
+                await self.highrise.chat(f"@{owner} трек '{title}' превышает 5 минут и не может быть добавлен в очередь.\n\nМаксимальная длительность трека 5 минуты.")
                 if os.path.exists(file_path):
                     os.remove(file_path)
                 return
@@ -580,8 +580,8 @@ class xenoichi(BaseBot):
                 if not line:
                     if self.ffmpeg_process.returncode is not None:
                         break
-                  else:
-                     continue
+                    else:
+                        continue
                 line = line.decode('utf-8').strip()
                 if line.startswith("out_time_ms="):
                     ms = int(line.split("=")[1])
@@ -591,7 +591,7 @@ class xenoichi(BaseBot):
                 if line.startswith("progress=end"):
                     break
                 if self.stream_stop_event.is_set():
-                   break
+                    break
             if self.ffmpeg_process.returncode != 0:
                 print(f"FFmpeg process exited with code {self.ffmpeg_process.returncode}")
                 if self.ffmpeg_process.stderr:
