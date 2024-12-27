@@ -293,12 +293,37 @@ class xenoichi(BaseBot):
             await self.skip_song(user)
         elif message.startswith('/np'):
             await self.now_playing()
+        elif message.startswith('/shutdown'):
+            if self.is_admin(user.username):
+               await self.shutdown_bot()
+            else:
+                await self.highrise.send_whisper(user.id, "\n❌ Это команда тебе не доступна!")
 
     def is_valid_url(self, url):
         for prefix in self.valid_url_prefixes:
             if url.startswith(prefix):
                 return True
         return False
+
+    async def shutdown_bot(self):
+        """Gracefully shuts down the bot and triggers a restart."""
+        print("Shutting down the bot...")
+        await self.highrise.chat("Бот перезагружается...")
+
+        await self.stop_existing_stream()
+
+        if self.play_task:
+            self.play_task.cancel()
+            try:
+               await self.play_task
+            except asyncio.CancelledError:
+                pass
+
+        self.close_db()
+        
+        self.clear_downloads_folder()
+        print("Bot shutdown initiated.")
+        os._exit(0) # Terminates the bot so the loop will restart it.
 
     async def add_to_queue(self, song_request, owner, search_by_title = True):
         await self.highrise.chat("Ищу песню... Пожалуйста, подождите.")
