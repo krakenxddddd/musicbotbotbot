@@ -315,7 +315,7 @@ class xenoichi(BaseBot):
         if self.play_task:
             self.play_task.cancel()
             try:
-               await self.play_task
+                await self.play_task
             except asyncio.CancelledError:
                 pass
 
@@ -323,7 +323,7 @@ class xenoichi(BaseBot):
         
         self.clear_downloads_folder()
         print("Bot shutdown initiated.")
-        os._exit(0) # Terminates the bot so the loop will restart it.
+        raise Exception("Bot is shutting down and restarting")
 
     async def add_to_queue(self, song_request, owner, search_by_title = True):
         await self.highrise.chat("Ищу песню... Пожалуйста, подождите.")
