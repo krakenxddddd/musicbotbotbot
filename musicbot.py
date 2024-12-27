@@ -543,7 +543,7 @@ class xenoichi(BaseBot):
         await asyncio.create_task(self._stream_to__thread(mp3_file_path))
 
 
-   async def _stream_to__thread(self, mp3_file_path):
+    async def _stream_to__thread(self, mp3_file_path):
         try:
             icecast_server = "live.radioking.com"
             icecast_port = 80
@@ -578,16 +578,16 @@ class xenoichi(BaseBot):
             while True:
                 line = await self.ffmpeg_process.stdout.readline()
                 if not line:
-                  if self.ffmpeg_process.returncode is not None:
-                     break
+                    if self.ffmpeg_process.returncode is not None:
+                        break
                   else:
                      continue
                 line = line.decode('utf-8').strip()
                 if line.startswith("out_time_ms="):
-                  ms = int(line.split("=")[1])
-                  self.current_position_ms = ms
-                  if self.start_time_ms is None:
-                    self.start_time_ms = ms # Set start time if not set yet
+                    ms = int(line.split("=")[1])
+                    self.current_position_ms = ms
+                    if self.start_time_ms is None:
+                        self.start_time_ms = ms # Set start time if not set yet
                 if line.startswith("progress=end"):
                     break
                 if self.stream_stop_event.is_set():
@@ -602,10 +602,10 @@ class xenoichi(BaseBot):
             print(f"Error streaming to Radioking: {e}")
         finally:
             if self.ffmpeg_process:
-               if self.ffmpeg_process.returncode is None:
+                if self.ffmpeg_process.returncode is None:
                     self.ffmpeg_process.terminate()
                     await self.ffmpeg_process.wait()
-               self.ffmpeg_process = None
+                self.ffmpeg_process = None
         self.stream_stop_event.clear() # Clear the flag when the stream finishes
 
 
@@ -613,11 +613,11 @@ class xenoichi(BaseBot):
    async def skip_song(self, user):
         """Allows an admin or the requester of the current song to skip."""
         if self.currently_playing:
-           if self.is_admin(user.username) or (self.current_song and self.current_song['owner'] == user.username):
-               self.stream_stop_event.set()
-               if self.ffmpeg_process:
-                 self.ffmpeg_process.terminate()
-               await self.highrise.chat(f"@{user.username} пропустил песню.")
+            if self.is_admin(user.username) or (self.current_song and self.current_song['owner'] == user.username):
+                self.stream_stop_event.set()
+                if self.ffmpeg_process:
+                    self.ffmpeg_process.terminate()
+                await self.highrise.chat(f"@{user.username} пропустил песню.")
            else:
                 await self.highrise.chat("Только администраторы или запросившие песню могут пропускать песни.")
         else:
