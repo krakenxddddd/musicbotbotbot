@@ -66,7 +66,7 @@ if __name__ == "__main__":
 
 
 class xenoichi(BaseBot):
-   def __init__(self):
+    def __init__(self):
         super().__init__()
         self.conn = sqlite3.connect(db_path)
         self.cursor = self.conn.cursor()
