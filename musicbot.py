@@ -75,15 +75,18 @@ class xenoichi(BaseBot):
         self.skip_event = asyncio.Event()
         self.ffmpeg_process = None
         self.currently_playing_title = None
-        self.admins = {'fedorballz', 'Skara0'}
-        self.ready = asyncio.Event()
+        self.admins = {'fedorballz', 'Skara0'}  # Add your admin usernames here
+        self.ready = asyncio.Event() # Change here
         self.play_lock = asyncio.Lock()
         self.play_task = None
         self.play_event = asyncio.Event()
-        self.valid_url_prefixes = ['https://www.youtube.com/', 'https://youtube.com/', 'https://youtu.be/', "https://on.soundcloud.com/", "https://soundcloud.com"]
+        self.valid_url_prefixes = ['https://www.youtube.com/', 'https://youtube.com/', 'https://youtu.be/', "https://on.soundcloud.com/", "https://soundcloud.com"] #Added valid prefixes
         self.current_position_ms = 0
         self.start_time_ms = None
-        self.stream_stop_event = asyncio.Event() # Add stream_stop_event
+        self.stream_stop_event = asyncio.Event()
+        self.request_queue = asyncio.Queue()
+        self.request_lock = asyncio.Lock()
+
 
     def close_db(self):
         self.conn.close()
@@ -100,12 +103,20 @@ class xenoichi(BaseBot):
 
 
     async def repeat_jackpot_rules(self):
-        messages = list(self.messages_dict_dj.values())  # Get all messages
+        messages = list(self.messages_dict_dj.values())
         message_index = 0
         while True:
             message = messages[message_index]
-            await self.highrise.chat(message)
-            message_index = (message_index + 1) % len(messages)  # Cycle through messages
+            try:
+                await self.highrise.chat(message)
+            except aiohttp.client_exceptions.ClientConnectionResetError as e:
+                print(f"Connection reset error in repeat_jackpot_rules, retrying in 10 seconds: {e}")
+                await asyncio.sleep(10)  # Retry after a delay
+                continue
+            except Exception as e:
+                print(f"An error occurred in repeat_jackpot_rules: {e}")
+                continue
+            message_index = (message_index + 1) % len(messages)
             await asyncio.sleep(60)
 
     async def on_start(self, session_metadata):
@@ -325,44 +336,65 @@ class xenoichi(BaseBot):
         print("Bot shutdown initiated.")
         raise Exception("Bot is shutting down and restarting")
 
-    async def add_to_queue(self, song_request, owner, search_by_title = True):
-        await self.highrise.chat("Ищу песню... Пожалуйста, подождите.")
-        try:
-            file_path, title, duration, is_playlist = await self.download_youtube_audio(song_request, search_by_title)
-        except Exception as e:
-            print(f"Error while downloading: {e}")
-            await self.highrise.chat(f"Произошла ошибка при скачивании трека, попробуйте позже.")
-            return
 
-        if file_path and title:
-           if is_playlist:
-              await asyncio.sleep(2)
-              await self.highrise.chat(f"Плейлисты не поддерживаются, я могу скачать только один трек. @{owner}")
-              if os.path.exists(file_path):
-                  os.remove(file_path)
-              return
-           if duration > 300:
-                await self.highrise.chat(f"@{owner} трек '{title}' превышает 5 минут и не может быть добавлен в очередь.\n\nМаксимальная длительность трека 5 минуты.")
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-                return
-           formatted_duration = self.format_time(duration)
-           message = f"""
-     🎶 Добавлено в очередь:
-        🎵 '{title}'
-       ⏱️ Длительность: {formatted_duration}
-      👤 Включил: @{owner}
-             """
-           self.song_queue.append({'title': title, 'file_path': file_path, 'owner': owner, 'duration': duration})
-           await self.highrise.chat(message)
-           
-           await self.save_queue()
+    async def add_to_queue(self, song_request, owner, search_by_title=True):
+        await self.request_queue.put({'song_request': song_request, 'owner': owner, 'search_by_title': search_by_title})
+        asyncio.create_task(self.process_request_queue())
 
-           if not self.play_task or self.play_task.done():
-               print("Playback loop has been created.")
-               self.play_task = asyncio.create_task(self.playback_loop())
+    async def process_request_queue(self):
+        if self.request_lock.locked():
+            return #If already locked, then the current function is running
 
-           self.play_event.set()
+        async with self.request_lock:
+            while not self.request_queue.empty():
+                request_data = await self.request_queue.get()
+                song_request = request_data['song_request']
+                owner = request_data['owner']
+                search_by_title = request_data['search_by_title']
+
+                await self.highrise.chat(f"@{owner} ищу песню... Пожалуйста, подождите.")
+
+                try:
+                    file_path, title, duration, is_playlist = await self.download_youtube_audio(song_request, search_by_title)
+                except Exception as e:
+                    print(f"Error while downloading: {e}")
+                    await self.highrise.chat(f"Произошла ошибка при скачивании трека, попробуйте позже. @{owner}")
+                    self.request_queue.task_done()
+                    continue
+
+                if file_path and title:
+                    if is_playlist:
+                        await asyncio.sleep(2)
+                        await self.highrise.chat(f"Плейлисты не поддерживаются, я могу скачать только один трек. @{owner}")
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                        self.request_queue.task_done()
+                        continue
+                if duration > 240:
+                    await self.highrise.chat(f"@{owner} трек '{title}' превышает 4 минуты и не может быть добавлен в очередь.\n\nМаксимальная длительность трека 4 минуты.")
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                    self.request_queue.task_done()
+                    continue
+                formatted_duration = self.format_time(duration)
+                message = f"""
+      🎶 Добавлено в очередь:
+         🎵 '{title}'
+        ⏱️ Длительность: {formatted_duration}
+       👤 Включил: @{owner}
+              """
+                self.song_queue.append({'title': title, 'file_path': file_path, 'owner': owner, 'duration': duration})
+                await self.highrise.chat(message)
+
+                await self.save_queue()
+
+                if not self.play_task or self.play_task.done():
+                    print("Playback loop has been created.")
+                    self.play_task = asyncio.create_task(self.playback_loop())
+
+                self.play_event.set()
+                self.request_queue.task_done()
+
 
     async def check_queue(self, page_number=1):
         try:
