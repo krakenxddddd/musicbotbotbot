@@ -604,8 +604,8 @@ class xenoichi(BaseBot):
         try:
             icecast_server = "live.radioking.com"
             icecast_port = 80
-            mount_point = "/dfsadfasfdsa"
-            username = "Kraken_Kraken"
+            mount_point = "/kraken-radio"
+            username = "wqeqwewq_qwewqe"
             password = "teenparalich000!"
             icecast_url = f"icecast://{username}:{password}@{icecast_server}:{icecast_port}{mount_point}"
 
