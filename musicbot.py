@@ -427,11 +427,21 @@ class xenoichi(BaseBot):
             return None, None, 0, False
 
     async def download_file(self, url: str, path: str):
+        logger.info(f"Начало скачивания файла: {url} -> {path}")
         async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
-                with open(path, 'wb') as f:
-                    async for chunk in resp.content.iter_chunked(1024):
-                        f.write(chunk)
+            try:
+                async with session.get(url) as resp:
+                    if resp.status == 200:
+                        logger.info(f"Файл {path} успешно скачан, сохраняю на диск.")
+                        with open(path, 'wb') as f:
+                            async for chunk in resp.content.iter_chunked(1024):
+                                f.write(chunk)
+                        logger.info(f"Файл {path} сохранен успешно.")
+                    else:
+                        logger.error(f"Ошибка при скачивании файла: {resp.status}")
+            except Exception as e:
+                logger.error(f"Ошибка при скачивании файла: {e}")
+
 
     def parse_track_id(self, url: str) -> int:
         try:
