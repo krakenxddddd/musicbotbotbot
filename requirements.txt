@@ -40,5 +40,5 @@ typing-extensions==3.10.0.2
 uritemplate==4.1.1
 urllib3==2.2.3
 yarl==1.17.1
-youtube-dl==2021.12.17
+yandex_music
 yt-dlp==2024.11.4
