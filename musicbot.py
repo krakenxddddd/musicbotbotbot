@@ -77,7 +77,6 @@ class YandexMusicBot(BaseBot):
         super().__init__()
         self.conn = sqlite3.connect(DB_PATH)
         self.cursor = self.conn.cursor()
-        self.init_db()
         self.setup_dirs()
         # Состояние бота
         self.song_queue = []
