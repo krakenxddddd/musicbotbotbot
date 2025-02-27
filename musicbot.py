@@ -50,13 +50,14 @@ if __name__ == "__main__":
 
 
 class YandexMusicBot(BaseBot):
+    allowed_usernames = ["fedorballz", "Skara0"]
+    
     def __init__(self):
         super().__init__()
         self.conn = sqlite3.connect(DB_PATH)
         self.cursor = self.conn.cursor()
         self.init_db()
         self.setup_dirs()
-        
         # Состояние бота
         self.song_queue = []
         self.currently_playing = False
@@ -340,4 +341,3 @@ class YandexMusicBot(BaseBot):
         if self.ffmpeg_process:
             self.ffmpeg_process.terminate()
 
-allowed_usernames = ["fedorballz", "Skara0"]
