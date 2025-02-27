@@ -240,26 +240,6 @@ class YandexMusicBot(BaseBot):
             
             elif message.startswith('/q'):
                 await self.check_queue()
-        if message.startswith('/cash'):
-            if user.username not in allowed_usernames:
-                await self.highrise.send_whisper(user.id, "\n❌ Это команда тебе не доступна!")
-                return
-            parts = message.split()
-            if len(parts) > 2:  # Check if username and amount are provided
-                target_username = parts[1].replace("@", "")
-                try:
-                    amount = int(parts[2])
-                    if amount > 0:
-                        self.update_user_balance(target_username, amount)
-                        await self.highrise.send_whisper(user.id, f"Выдал {amount} @{target_username} на баланс")
-                    else:
-                        await self.highrise.send_whisper(user.id, "Сумма должна быть положительной.")
-                except ValueError:
-                    await self.highrise.send_whisper(user.id, "Неверная сумма. Пожалуйста, введите число.")
-                except Exception as e:
-                    await self.highrise.send_whisper(user.id, f"Ошибка при добавлении на баланс @{target_username}: {e}")
-            else:
-                await self.highrise.send_whisper(user.id, "Используй: /cash @username amount") #Correct usage
 
         except Exception as e:
             logger.error(f"Chat error: {e}")
