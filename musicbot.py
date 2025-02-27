@@ -189,7 +189,7 @@ class xenoichi(BaseBot):
             await self.highrise.send_whisper(user.id, f"\nУ бота в кошельке {wallet[0].amount} {wallet[0].type}")
 
         if message.lower().startswith("/tipmedj "):
-            if user.username not in self.allowed_usernames:
+            if user.username not in allowed_usernames:
                 await self.highrise.send_whisper(user.id, "\n❌ Это команда тебе не доступна!")
                 return
             parts = message.split(" ")
@@ -231,7 +231,7 @@ class xenoichi(BaseBot):
                 await self.highrise.tip_user(user.id, bar)
 
         if message.startswith('/cash'):
-            if user.username not in self.allowed_usernames:
+            if user.username not in allowed_usernames:
                 await self.highrise.send_whisper(user.id, "\n❌ Это команда тебе не доступна!")
                 return
             parts = message.split()
