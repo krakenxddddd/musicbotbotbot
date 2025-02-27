@@ -100,6 +100,24 @@ class xenoichi(BaseBot):
             "command_list2": "\nСписок команд:\n\n/skip - пропустить свой трек\n/bal - Проверить баланс\n/np - Узнать название трека\n/q - узнать очередь\n\nОтправь чаевые, чтобы пополнить баланс"
         }
 
+
+    async def repeat_jackpot_rules(self):
+        messages = list(self.messages_dict_dj.values())
+        message_index = 0
+        while True:
+            message = messages[message_index]
+            try:
+                await self.highrise.chat(message)
+            except aiohttp.client_exceptions.ClientConnectionResetError as e:
+                print(f"Connection reset error in repeat_jackpot_rules, retrying in 10 seconds: {e}")
+                await asyncio.sleep(10)  # Retry after a delay
+                continue
+            except Exception as e:
+                print(f"An error occurred in repeat_jackpot_rules: {e}")
+                continue
+            message_index = (message_index + 1) % len(messages)
+            await asyncio.sleep(60)
+    
     async def connect_yandex(self):
         try:
             self.client = await ClientAsync(YANDEX_TOKEN).init()
