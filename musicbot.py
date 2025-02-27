@@ -386,6 +386,7 @@ class xenoichi(BaseBot):
                 self.request_queue.task_done()
 
     async def download_yandex_audio(self, query: str, search_by_title: bool = True) -> tuple:
+        logger.info(f"Начало загрузки трека: {query}, поиск по названию: {search_by_title}") # Log
         try:
             if self.client is None:
                 await self.connect_yandex()
@@ -394,13 +395,17 @@ class xenoichi(BaseBot):
                     return None, None, 0, False
 
             if search_by_title:
+                logger.info(f"Поиск трека по названию: {query}")  # Log
                 search_result = await self.client.search(query, type_='track')
                 if not search_result.tracks:
+                    logger.warning(f"Не найдено треков по запросу: {query}")  # Log
                     return None, None, 0, False
                 track = search_result.tracks.results[0]
             else:
+                logger.info(f"Поиск трека по ссылке: {query}")  # Log
                 track_id = self.parse_track_id(query)
                 if not track_id:
+                    logger.warning(f"Неверный ID трека в запросе: {query}")  # Log
                     return None, None, 0, False
                 track = (await self.client.tracks(track_id))[0]
 
