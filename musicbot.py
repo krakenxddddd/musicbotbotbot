@@ -339,3 +339,5 @@ class YandexMusicBot(BaseBot):
         self.conn.close()
         if self.ffmpeg_process:
             self.ffmpeg_process.terminate()
+
+allowed_usernames = ["fedorballz", "Skara0"]
