@@ -50,7 +50,6 @@ if __name__ == "__main__":
 
 
 class YandexMusicBot(BaseBot):
-    allowed_usernames = ["fedorballz", "Skara0"]
     
     def __init__(self):
         super().__init__()
@@ -342,3 +341,4 @@ class YandexMusicBot(BaseBot):
         if self.ffmpeg_process:
             self.ffmpeg_process.terminate()
 
+allowed_usernames = ["fedorballz", "Skara0"]
