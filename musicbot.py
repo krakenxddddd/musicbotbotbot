@@ -351,6 +351,13 @@ class xenoichi(BaseBot):
                     self.request_queue.task_done()
                     continue
 
+                if file_path is None or title is None:
+                    logger.warning(f"Не удалось скачать трек для запроса: {song_request}, @{owner}")
+                    await self.highrise.chat(f"Не удалось найти трек | @{owner}")
+                    self.request_queue.task_done()
+                    self.request_queue.task_done()
+                    continue
+
                 if file_path and title:
                     if is_playlist:
                         await asyncio.sleep(2)
@@ -383,10 +390,18 @@ class xenoichi(BaseBot):
                     self.play_task = asyncio.create_task(self.playback_loop())
 
                 self.play_event.set()
-                self.request_queue.task_done()
 
+                # Перемещаем вызов stream сюда, чтобы убедиться, что файл скачан
+                if file_path:
+                    try:
+                        await self.stream(file_path)
+                    except Exception as e:
+                        logger.error(f"Ошибка при стриминге трека: {e}")
+                        await self.highrise.chat("Произошла ошибка при воспроизведении трека.")
+
+                self.request_queue.task_done()
     async def download_yandex_audio(self, query: str, search_by_title: bool = True) -> tuple:
-        logger.info(f"Начало загрузки трека: {query}, поиск по названию: {search_by_title}") # Log
+        logger.info(f"Начало загрузки трека: {query}, поиск по названию: {search_by_title}")
         try:
             if self.client is None:
                 await self.connect_yandex()
@@ -395,17 +410,17 @@ class xenoichi(BaseBot):
                     return None, None, 0, False
 
             if search_by_title:
-                logger.info(f"Поиск трека по названию: {query}")  # Log
+                logger.info(f"Поиск трека по названию: {query}")
                 search_result = await self.client.search(query, type_='track')
                 if not search_result.tracks:
-                    logger.warning(f"Не найдено треков по запросу: {query}")  # Log
+                    logger.warning(f"Не найдено треков по запросу: {query}")
                     return None, None, 0, False
                 track = search_result.tracks.results[0]
             else:
-                logger.info(f"Поиск трека по ссылке: {query}")  # Log
+                logger.info(f"Поиск трека по ссылке: {query}")
                 track_id = self.parse_track_id(query)
                 if not track_id:
-                    logger.warning(f"Неверный ID трека в запросе: {query}")  # Log
+                    logger.warning(f"Неверный ID трека в запросе: {query}")
                     return None, None, 0, False
                 track = (await self.client.tracks(track_id))[0]
 
@@ -438,10 +453,10 @@ class xenoichi(BaseBot):
                                 f.write(chunk)
                         logger.info(f"Файл {path} сохранен успешно.")
                     else:
-                        logger.error(f"Ошибка при скачивании файла: {resp.status}")
+                        logger.error(f"Ошибка при скачивании файла: {resp.status} {resp.reason}")
+                        return
             except Exception as e:
                 logger.error(f"Ошибка при скачивании файла: {e}")
-
 
     def parse_track_id(self, url: str) -> int:
         try:
@@ -529,12 +544,22 @@ class xenoichi(BaseBot):
                 await self.highrise.chat(message)
                 print(f"Playing: {song_title}")
 
-                await self.stream(file_path)
+                if file_path:
+                    try:
+                        await self.stream(file_path)
+                    except Exception as e:
+                        logger.error(f"Ошибка при стриминге трека: {e}")
+                        await self.highrise.chat("Произошла ошибка при воспроизведении трека.")
+                else:
+                    logger.warning("Путь к файлу не указан, пропускаю трек.")
+                    await self.highrise.chat("Ошибка при воспроизведении трека, пропускаю.")
+                self.currently_playing = False
+                continue
 
                 while self.ffmpeg_process and self.ffmpeg_process.returncode is None:
                     await asyncio.sleep(0.1)
 
-                if os.path.exists(file_path):
+                if file_path and os.path.exists(file_path):
                     os.remove(file_path)
 
                 await self.save_queue()
