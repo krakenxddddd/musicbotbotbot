@@ -209,7 +209,9 @@ class YandexMusicBot(BaseBot):
                     try:
                         amount = int(parts[2])
                         if amount > 0:
+                            logger.info(f"Попытка обновить баланс для {username} на {amount}")
                             self.update_user_balance(target_username, amount)
+                            logger.info(f"Баланс для {username} обновлен")
                             await self.highrise.send_whisper(user.id, f"Выдал {amount} @{target_username} на баланс")
                         else:
                             await self.highrise.send_whisper(user.id, "Сумма должна быть положительной.")
@@ -218,8 +220,7 @@ class YandexMusicBot(BaseBot):
                     except Exception as e:
                         await self.highrise.send_whisper(user.id, f"Ошибка при добавлении на баланс @{target_username}: {e}")
                 else:
-                    await self.highrise.send_whisper(user.id, "Используй: /cash @username amount") #Correct usage
-            
+                    await self.highrise.send_whisper(user.id, "Используй: /cash @username amount") #Correct usage  
             elif message.startswith('/linkplay '):
                 url = message[10:].strip()
                 balance = self.get_user_balance(user.username)
