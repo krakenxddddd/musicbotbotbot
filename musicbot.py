@@ -30,6 +30,28 @@ bot_class_name = "YandexMusicBot"
 room_id = "67372d6e6c5bb6d658b48c8a"
 bot_token = "16cdf17cd22e24df641e053066713cd0245a54747532b122ee7634a25194a0fa"
 
+
+def init_db():
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            balance INTEGER DEFAULT 10
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS queue_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            queue TEXT
+        )
+    ''')
+
+    conn.commit()
+    conn.close()
+
+init_db()
+
 if __name__ == "__main__":
     definitions = [
             BotDefinition(
@@ -83,15 +105,6 @@ class YandexMusicBot(BaseBot):
             "command_list": "\nКоманды:\n/play [название]\n/linkplay [ссылка]",
             "command_list2": "\nКоманды:\n/skip | /bal | /np | /q"
         }
-
-    def init_db(self):
-        self.cursor.execute('''CREATE TABLE IF NOT EXISTS users (
-            username TEXT PRIMARY KEY,
-            balance INTEGER DEFAULT 10)''')
-        self.cursor.execute('''CREATE TABLE IF NOT EXISTS queue_data (
-            id INTEGER PRIMARY KEY,
-            data TEXT)''')
-        self.conn.commit()
 
     def setup_dirs(self):
         os.makedirs(DOWNLOAD_DIR, exist_ok=True)
