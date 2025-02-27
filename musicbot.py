@@ -32,7 +32,7 @@ bot_token = "16cdf17cd22e24df641e053066713cd0245a54747532b122ee7634a25194a0fa"
 
 
 def init_db():
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
