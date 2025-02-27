@@ -27,8 +27,8 @@ ICECAST_URL = "icecast://sadfsdafdsa_sdafasdfasd:teenparalich0@live.radioking.co
 # BOT SETTINGS
 bot_file_name = "musicbot"
 bot_class_name = "xenoichi"
-room_id = "YOUR_ROOM_ID"
-bot_token = "YOUR_BOT_TOKEN"
+room_id = "67372d6e6c5bb6d658b48c8a"
+bot_token = "16cdf17cd22e24df641e053066713cd0245a54747532b122ee7634a25194a0fa"
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
