@@ -512,10 +512,10 @@ class xenoichi(BaseBot):
                print(f"[Попытка {attempt+1}] Ошибка скачивания: {str(e)}")
                error_message = str(e).lower()
             
-                if any(err in error_message for err in ['ext', 'format']):
-                    print("Обнаружена ошибка формата, изменяем параметры...")
-                    ydl_opts['postprocessors'][0]['preferredcodec'] = 'm4a'
-                    continue
+               if any(err in error_message for err in ['ext', 'format']):
+                   print("Обнаружена ошибка формата, изменяем параметры...")
+                   ydl_opts['postprocessors'][0]['preferredcodec'] = 'm4a'
+                   continue
             
             except Exception as e:
                 print(f"[Попытка {attempt+1}] Критическая ошибка: {type(e).__name__} - {str(e)}")
