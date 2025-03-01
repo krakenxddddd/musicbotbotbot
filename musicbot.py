@@ -440,44 +440,39 @@ class xenoichi(BaseBot):
             print(f"Произошла ошибка: {str(e)}")
 
     async def download_soundcloud_audio(self, song_request, search_by_title=True):
-    # """Скачивает аудио с SoundCloud с учетом всех исправлений"""
-        max_retries = 3
-        proxy_rotation_count = 0
-    
-        for attempt in range(max_retries):
-            proxy = None
-            try:
-            # Получаем рабочий прокси
-                proxy = await self.get_working_proxy()
-                if not proxy:
-                    raise Exception("Нет доступных рабочих прокси")
+        proxy = 'http://GTSfxm:UfcatG@46.232.12.76:8000'
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': 'downloads/%(id)s.%(ext)s',
+            'proxy': proxy,
+            'nocheckcertificate': True,
+            'source_address': '0.0.0.0',
+            'socket_timeout': 45,
+            'retries': 5,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                'Accept-Encoding': 'gzip, deflate',
+                'Referer': 'https://soundcloud.com/'
+            },
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+            }]
+        }
 
-                ydl_opts = {
-                    'format': 'bestaudio/best',
-                    'outtmpl': 'downloads/%(id)s.%(ext)s',
-                    'default_search': 'scsearch' if search_by_title else None,
-                    'quiet': False,  # Для отладки
-                    'noplaylist': True,
-                    'source_address': '0.0.0.0',
-                    'extract_flat': True,
-                    'proxy': proxy,
-                    'socket_timeout': 45,
-                    'force_ipv4': True,
-                    'nocheckcertificate': True,
-                    'verbose': True,
-                    'postprocessors': [{
-                        'key': 'FFmpegExtractAudio',
-                        'preferredcodec': 'mp3',
-                        'preferredquality': '192',
-                    }]
-                }
-
-                with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-                # Получаем информацию о треке
-                    info = ydl.extract_info(
-                        song_request if not search_by_title else f"scsearch:{song_request}",
-                        download=False
-                    )
+        try:
+            with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+            # Дополнительная проверка геолокации
+                ydl.params.update({'geo_bypass': True})
+            
+                info = ydl.extract_info(
+                    song_request if not search_by_title else f"scsearch:{song_request}",
+                    download=True
+                )
+            
+            # Добавьте эту проверку
+                if not info.get('url'):
+                    raise Exception("Не удалось получить прямой URL контента")
 
                 # Обработка плейлистов
                     if 'entries' in info:
