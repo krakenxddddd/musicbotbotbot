@@ -569,7 +569,7 @@ class xenoichi(BaseBot):
        return f"{minutes:02d}:{seconds:02d}"
 
     async def convert_to_mp3(self, audio_file_path):
-    """Конвертация в MP3 с оптимизацией для SoundCloud"""
+    # Конвертация в MP3 с оптимизацией для SoundCloud
         try:
             if audio_file_path.endswith('.mp3'):
                 return audio_file_path
