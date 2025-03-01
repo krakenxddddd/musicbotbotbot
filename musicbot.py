@@ -435,7 +435,7 @@ class xenoichi(BaseBot):
             print(f"Произошла ошибка: {str(e)}")
 
     async def download_soundcloud_audio(self, song_request, search_by_title=True):
-    """Скачивает аудио с SoundCloud и возвращает путь к файлу, название и длительность"""
+    #Скачивает аудио с SoundCloud и возвращает путь к файлу, название и длительность
         try:
             ydl_opts = {
                 'format': 'bestaudio/best',
