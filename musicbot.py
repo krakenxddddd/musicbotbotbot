@@ -510,7 +510,7 @@ class xenoichi(BaseBot):
 
             except youtube_dl.utils.DownloadError as e:
                print(f"[Попытка {attempt+1}] Ошибка скачивания: {str(e)}")
-                error_message = str(e).lower()
+               error_message = str(e).lower()
             
                 if any(err in error_message for err in ['ext', 'format']):
                     print("Обнаружена ошибка формата, изменяем параметры...")
