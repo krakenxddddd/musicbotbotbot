@@ -465,63 +465,48 @@ class xenoichi(BaseBot):
                     }]
                 }
             
-                with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-                    ydl.params.update({'geo_bypass': True})
-                    info = ydl.extract_info(
-                        song_request if not search_by_title else f"scsearch:{song_request}",
-                        download=True
-                    )
-                
-                    if not info.get('url'):
-                        raise Exception("Не удалось получить прямой URL контента")
-                
+            with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+                if search_by_title: #Searching by title
+                    info = ydl.extract_info(f"scsearch:{song_request}", download=False)
+                    if 'entries' in info:
+                        info = info['entries'][0]
+
+                    video_id = info['id']
+                    title = info['title']
+                    file_extension = info['ext']
+                    file_path = f"downloads/{video_id}.{file_extension}"
+                    
+                else: #Searching by link
+                    info = ydl.extract_info(song_request, download = False)
+
                     if 'entries' in info:
                         if len(info['entries']) > 1:
-                            return None, None, 0, True
+                           return None, None, 0, True
                         info = info['entries'][0]
-                
-                    required_fields = ['id', 'ext', 'title', 'duration', 'webpage_url']
-                    for field in required_fields:
-                        if field not in info:
-                            raise ValueError(f"Отсутствует обязательное поле: {field}")
-                
-                    file_path = f"downloads/{info['id']}.{info['ext']}"
-                
-                    if os.path.exists(file_path):
-                        print(f"Файл уже существует: {file_path}")
-                        return file_path, info['title'], info['duration'], False
-                
-                    print(f"Начинаем скачивание: {info['webpage_url']}")
-                    ydl.download([info['webpage_url']])
-                
-                    if not os.path.exists(file_path):
-                        raise FileNotFoundError(f"Файл не был скачан: {file_path}")
-                
-                    return file_path, info['title'], info['duration'], False
 
-            except youtube_dl.utils.DownloadError as e:
-                print(f"[Попытка {attempt+1}] Ошибка скачивания: {str(e)}")
-                error_message = str(e).lower()
-            
-                if any(err in error_message for err in ['ext', 'format']):
-                    print("Обнаружена ошибка формата, изменяем параметры...")
-                    ydl_opts['postprocessors'][0]['preferredcodec'] = 'm4a'
-                    continue
+                    video_id = info['id']
+                    title = info['title']
+                    file_extension = info['ext']
+                    file_path = f"downloads/{video_id}.{file_extension}"
 
-            except Exception as e:
-                print(f"[Попытка {attempt+1}] Критическая ошибка: {type(e).__name__} - {str(e)}")
-            
-                if len(self.proxy_list) > 1:
-                    await self.rotate_proxy()
-                    proxy_rotation_count += 1
-            
-                backoff_time = min(2 ** attempt, 10)
-                print(f"Повтор через {backoff_time} сек...")
-                await asyncio.sleep(backoff_time)
-                continue
+                if os.path.exists(file_path):
+                    print(f"The file '{file_path}' already exists, skipping download.")
+                    return file_path, title, int(info['duration']), False # Changed to int()
+                
+                info = ydl.extract_info(song_request, download=True)
+                if 'entries' in info:
+                    if len(info['entries']) > 1:
+                        return None, None, 0, True
+                    info = info['entries'][0]
 
-        print("Превышено максимальное количество попыток")
-        return None, None, 0, False
+                video_id = info['id']
+                file_extension = info['ext']
+                file_path = f"downloads/{video_id}.{file_extension}"
+                print(f"Downloaded: {file_path} with title: {title}")
+                return file_path, title, int(info['duration']), False # Changed to int()
+        except Exception as e:
+              print(f"Error downloading the song: {e}")
+              return None, None, 0, False
             
     async def get_working_proxy(self):
     #"""Получение первого рабочего прокси"""
