@@ -69,7 +69,7 @@ class xenoichi(BaseBot):
     def __init__(self):
         super().__init__()
         self.proxy_list = [
-            'socks5://GTSfxm:UfcatG@46.232.12.76:8000'
+            'https://GTSfxm:UfcatG@46.232.12.76:8000'
             ]
         self.current_proxy = None
         self.proxy_timeout = 10  # Таймаут в секундах
