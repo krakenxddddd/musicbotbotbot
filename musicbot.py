@@ -440,94 +440,86 @@ class xenoichi(BaseBot):
             print(f"Произошла ошибка: {str(e)}")
 
     async def download_soundcloud_audio(self, song_request, search_by_title=True):
+        max_retries = 3
+        proxy_rotation_count = 0
         proxy = 'http://GTSfxm:UfcatG@46.232.12.76:8000'
-        ydl_opts = {
-            'format': 'bestaudio/best',
-            'outtmpl': 'downloads/%(id)s.%(ext)s',
-            'proxy': proxy,
-            'nocheckcertificate': True,
-            'source_address': '0.0.0.0',
-            'socket_timeout': 45,
-            'retries': 5,
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-                'Accept-Encoding': 'gzip, deflate',
-                'Referer': 'https://soundcloud.com/'
-            },
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-            }]
-        }
-
-        try:
-            with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-            # Дополнительная проверка геолокации
-                ydl.params.update({'geo_bypass': True})
+    
+        for attempt in range(max_retries):
+            try:
+                ydl_opts = {
+                    'format': 'bestaudio/best',
+                    'outtmpl': 'downloads/%(id)s.%(ext)s',
+                    'proxy': proxy,
+                    'nocheckcertificate': True,
+                    'source_address': '0.0.0.0',
+                    'socket_timeout': 45,
+                    'retries': 5,
+                    'http_headers': {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                        'Accept-Encoding': 'gzip, deflate',
+                        'Referer': 'https://soundcloud.com/'
+                    },
+                    'postprocessors': [{
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                    }]
+                }
             
-                info = ydl.extract_info(
-                    song_request if not search_by_title else f"scsearch:{song_request}",
-                    download=True
-                )
-            
-            # Добавьте эту проверку
-                if not info.get('url'):
-                    raise Exception("Не удалось получить прямой URL контента")
-
-                # Обработка плейлистов
+                with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+                    ydl.params.update({'geo_bypass': True})
+                    info = ydl.extract_info(
+                        song_request if not search_by_title else f"scsearch:{song_request}",
+                        download=True
+                    )
+                
+                    if not info.get('url'):
+                        raise Exception("Не удалось получить прямой URL контента")
+                
                     if 'entries' in info:
                         if len(info['entries']) > 1:
                             return None, None, 0, True
                         info = info['entries'][0]
-
-                # Проверка обязательных полей
+                
                     required_fields = ['id', 'ext', 'title', 'duration', 'webpage_url']
                     for field in required_fields:
                         if field not in info:
                             raise ValueError(f"Отсутствует обязательное поле: {field}")
-
+                
                     file_path = f"downloads/{info['id']}.{info['ext']}"
                 
-                # Если файл уже существует
                     if os.path.exists(file_path):
                         print(f"Файл уже существует: {file_path}")
                         return file_path, info['title'], info['duration'], False
-
-                # Скачивание файла
+                
                     print(f"Начинаем скачивание: {info['webpage_url']}")
                     ydl.download([info['webpage_url']])
-
-                # Проверка результата
+                
                     if not os.path.exists(file_path):
                         raise FileNotFoundError(f"Файл не был скачан: {file_path}")
-
+                
                     return file_path, info['title'], info['duration'], False
 
             except youtube_dl.utils.DownloadError as e:
-               print(f"[Попытка {attempt+1}] Ошибка скачивания: {str(e)}")
-               error_message = str(e).lower()
+                print(f"[Попытка {attempt+1}] Ошибка скачивания: {str(e)}")
+                error_message = str(e).lower()
             
-               if any(err in error_message for err in ['ext', 'format']):
-                   print("Обнаружена ошибка формата, изменяем параметры...")
-                   ydl_opts['postprocessors'][0]['preferredcodec'] = 'm4a'
-                   continue
-            
+                if any(err in error_message for err in ['ext', 'format']):
+                    print("Обнаружена ошибка формата, изменяем параметры...")
+                    ydl_opts['postprocessors'][0]['preferredcodec'] = 'm4a'
+                    continue
+
             except Exception as e:
                 print(f"[Попытка {attempt+1}] Критическая ошибка: {type(e).__name__} - {str(e)}")
             
-            # Ротация прокси только если есть другие прокси
                 if len(self.proxy_list) > 1:
                     await self.rotate_proxy()
                     proxy_rotation_count += 1
             
-            # Пауза перед повторной попыткой
                 backoff_time = min(2 ** attempt, 10)
                 print(f"Повтор через {backoff_time} сек...")
                 await asyncio.sleep(backoff_time)
                 continue
-        
-            break
-    
+
         print("Превышено максимальное количество попыток")
         return None, None, 0, False
             
