@@ -68,6 +68,11 @@ if __name__ == "__main__":
 class xenoichi(BaseBot):
     def __init__(self):
         super().__init__()
+        self.proxy_list = [
+            'socks5://GTSfxm:UfcatG@46.232.12.76:8000'
+            ]
+        self.current_proxy = None
+        self.proxy_timeout = 10  # Таймаут в секундах
         self.conn = sqlite3.connect(db_path)
         self.cursor = self.conn.cursor()
         self.song_queue = []
@@ -123,7 +128,7 @@ class xenoichi(BaseBot):
         asyncio.create_task(self.repeat_jackpot_rules())
         await self.highrise.walk_to(Position(16.5, 0.0, 20.5))
 
-        print("Xenbot is armed and ready!")
+        print("KrakenDJ is armed and ready!")
         print("Bot is starting... cleaning up any active streams.")
 
         await self.stop_existing_stream()
@@ -137,6 +142,22 @@ class xenoichi(BaseBot):
         self.ready.set()  # Set to true, now it is ready
         await asyncio.sleep(3)
 
+    async def get_working_proxy(self):
+        # Тестирует доступные прокси и возвращает рабочий
+        async with aiohttp.ClientSession() as session:
+            for proxy in self.proxy_list:
+                try:
+                    async with session.get('https://soundcloud.com', 
+                                         proxy=proxy,
+                                         timeout=self.proxy_timeout) as resp:
+                        if resp.status == 200:
+                            self.current_proxy = proxy
+                            return proxy
+                except Exception as e:
+                    print(f"Прокси {proxy} не работает: {str(e)}")
+                    continue
+        raise Exception("Не удалось найти рабочий прокси!")
+    
     async def on_user_join(self, user: User, position: Position) -> None:
         await self.highrise.send_whisper(user.id, f"\nСписок команд:\n\n/play [название песни] - Заказать песню по названию\n/linkplay [ссылка] - Заказать песню по ссылке Youtube или SoundCloud")
         await self.highrise.send_whisper(user.id, f"\n/skip - пропустить свой трек\n/bal - Проверить баланс\n/np - Узнать название трека\n/q - узнать очередь\n\nОтправь чаевые, чтобы пополнить баланс")
@@ -435,8 +456,9 @@ class xenoichi(BaseBot):
             print(f"Произошла ошибка: {str(e)}")
 
     async def download_soundcloud_audio(self, song_request, search_by_title=True):
-    #Скачивает аудио с SoundCloud и возвращает путь к файлу, название и длительность
+    # Скачивает аудио с SoundCloud и возвращает путь к файлу, название и длительность
         try:
+            proxy = await self.get_working_proxy()
             ydl_opts = {
                 'format': 'bestaudio/best',
                 'outtmpl': 'downloads/%(id)s.%(ext)s',
@@ -479,9 +501,21 @@ class xenoichi(BaseBot):
             print(f"Ошибка скачивания с SoundCloud: {e}")
             return None, None, 0, False
         except Exception as e:
-            print(f"Общая ошибка: {e}")
+            print(f"Ошибка при использовании прокси {proxy}: {str(e)}")
+            await self.rotate_proxy()
+            return await self.download_soundcloud_audio(song_request, search_by_title)
             return None, None, 0, False
+            
+    async def rotate_proxy(self):
+        # Смена прокси при проблемах
+        try:
+            self.proxy_list.append(self.proxy_list.pop(0))
+            self.current_proxy = None
+            print("Ротация прокси... Новый список:", self.proxy_list)
+        except Exception as e:
+            print("Ошибка ротации прокси:", str(e))
 
+    
     async def now_playing(self):
         if self.currently_playing_title:
             current_song_owner = self.current_song['owner'] if self.current_song else "Unknown"
