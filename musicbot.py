@@ -141,27 +141,6 @@ class xenoichi(BaseBot):
         self.play_task = asyncio.create_task(self.playback_loop())
         self.ready.set()  # Set to true, now it is ready
         await asyncio.sleep(3)
-
-    async def get_working_proxy(self):
-    # Проверка прокси с обработкой исключений"""
-        try:
-            async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
-                for proxy in self.proxy_list:
-                    try:
-                        async with session.get(
-                            'https://soundcloud.com',
-                            proxy=proxy,
-                            timeout=aiohttp.ClientTimeout(total=15)
-                        ) as resp:
-                            if resp.status == 200:
-                                return proxy
-                    except Exception as e:
-                        print(f"[Прокси {proxy}] Ошибка: {type(e).__name__}")
-                        continue
-            raise Exception("Все прокси нерабочие")
-        except Exception as e:
-            print(f"Критическая ошибка: {str(e)}")
-            return None  # Возвращаем None для обработки в вызывающем коде
     
     async def on_user_join(self, user: User, position: Position) -> None:
         await self.highrise.send_whisper(user.id, f"\nСписок команд:\n\n/play [название песни] - Заказать песню по названию\n/linkplay [ссылка] - Заказать песню по ссылке Youtube или SoundCloud")
@@ -461,69 +440,136 @@ class xenoichi(BaseBot):
             print(f"Произошла ошибка: {str(e)}")
 
     async def download_soundcloud_audio(self, song_request, search_by_title=True):
-    # Скачивает аудио с SoundCloud и возвращает путь к файлу, название и длительность
-        proxy = None  # Инициализация переменной
-        try:
-        # Получаем рабочий прокси
-            proxy = await self.get_working_proxy()
-        
-            ydl_opts = {
-                'format': 'bestaudio/best',
-                'outtmpl': 'downloads/%(id)s.%(ext)s',
-                'default_search': 'scsearch' if search_by_title else None,
-                'quiet': True,
-                'noplaylist': True,
-                'source_address': '0.0.0.0',
-                'extract_flat': True,
-                'proxy': proxy,
-                'socket_timeout': 30,
-                'force_ipv4': True,
-                'nocheckcertificate': True  # Отключаем проверку сертификатов
-            }
-            with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-                if search_by_title:
-                    # Поиск по названию
-                    info = ydl.extract_info(f"scsearch:{song_request}", download=False)
-                    if not info or 'entries' not in info or len(info['entries']) == 0:
-                        return None, None, 0, False
+    # """Скачивает аудио с SoundCloud с учетом всех исправлений"""
+        max_retries = 3
+        proxy_rotation_count = 0
+    
+        for attempt in range(max_retries):
+            proxy = None
+            try:
+            # Получаем рабочий прокси
+                proxy = await self.get_working_proxy()
+                if not proxy:
+                    raise Exception("Нет доступных рабочих прокси")
+
+                ydl_opts = {
+                    'format': 'bestaudio/best',
+                    'outtmpl': 'downloads/%(id)s.%(ext)s',
+                    'default_search': 'scsearch' if search_by_title else None,
+                    'quiet': False,  # Для отладки
+                    'noplaylist': True,
+                    'source_address': '0.0.0.0',
+                    'extract_flat': True,
+                    'proxy': proxy,
+                    'socket_timeout': 45,
+                    'force_ipv4': True,
+                    'nocheckcertificate': True,
+                    'verbose': True,
+                    'postprocessors': [{
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                        'preferredquality': '192',
+                    }]
+                }
+
+                with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+                # Получаем информацию о треке
+                    info = ydl.extract_info(
+                        song_request if not search_by_title else f"scsearch:{song_request}",
+                        download=False
+                    )
+
+                # Обработка плейлистов
+                    if 'entries' in info:
+                        if len(info['entries']) > 1:
+                            return None, None, 0, True
+                        info = info['entries'][0]
+
+                # Проверка обязательных полей
+                    required_fields = ['id', 'ext', 'title', 'duration', 'webpage_url']
+                    for field in required_fields:
+                        if field not in info:
+                            raise ValueError(f"Отсутствует обязательное поле: {field}")
+
+                    file_path = f"downloads/{info['id']}.{info['ext']}"
                 
-                    info = info['entries'][0]
-                else:
-                # Прямая ссылка
-                    info = ydl.extract_info(song_request, download=False)
+                # Если файл уже существует
+                    if os.path.exists(file_path):
+                        print(f"Файл уже существует: {file_path}")
+                        return file_path, info['title'], info['duration'], False
 
-            # Обработка плейлистов
-                if 'entries' in info:
-                    if len(info['entries']) > 1:
-                        return None, None, 0, True
-                    info = info['entries'][0]
+                # Скачивание файла
+                    print(f"Начинаем скачивание: {info['webpage_url']}")
+                    ydl.download([info['webpage_url']])
 
-            # Проверка существования файла
-                file_path = f"downloads/{info['id']}.{info['ext']}"
-                if os.path.exists(file_path):
+                # Проверка результата
+                    if not os.path.exists(file_path):
+                        raise FileNotFoundError(f"Файл не был скачан: {file_path}")
+
                     return file_path, info['title'], info['duration'], False
 
-            # Скачивание
-                ydl.download([info['webpage_url']])
+            except youtube_dl.utils.DownloadError as e:
+               print(f"[Попытка {attempt+1}] Ошибка скачивания: {str(e)}")
+                error_message = str(e).lower()
             
-                return file_path, info['title'], info['duration'], False
+                if any(err in error_message for err in ['ext', 'format']):
+                    print("Обнаружена ошибка формата, изменяем параметры...")
+                    ydl_opts['postprocessors'][0]['preferredcodec'] = 'm4a'
+                    continue
+            
+            except Exception as e:
+                print(f"[Попытка {attempt+1}] Критическая ошибка: {type(e).__name__} - {str(e)}")
+            
+            # Ротация прокси только если есть другие прокси
+                if len(self.proxy_list) > 1:
+                    await self.rotate_proxy()
+                    proxy_rotation_count += 1
+            
+            # Пауза перед повторной попыткой
+                backoff_time = min(2 ** attempt, 10)
+                print(f"Повтор через {backoff_time} сек...")
+                await asyncio.sleep(backoff_time)
+                continue
+        
+            break
+    
+        print("Превышено максимальное количество попыток")
+        return None, None, 0, False
+            
+    async def get_working_proxy(self):
+    #"""Получение первого рабочего прокси"""
+        if not self.proxy_list:
+            return None
+        
+    # Проверка последнего рабочего прокси
+        if self.current_proxy:
+            return self.current_proxy
+        
+    # Тестируем все прокси по очереди
+        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
+            for proxy in self.proxy_list:
+                try:
+                    async with session.get(
+                        'https://api-v2.soundcloud.com/',
+                        proxy=proxy,
+                        timeout=15
+                    ) as resp:
+                        if resp.status == 200:
+                            self.current_proxy = proxy
+                            return proxy
+                except Exception:
+                    continue
+        return None
 
-        except youtube_dl.DownloadError as e:
-            print(f"Ошибка скачивания с SoundCloud: {e}")
-            return None, None, 0, False
-        except Exception as e:
-            print(f"Ошибка при использовании прокси {proxy}: {str(e)}")
-            await self.rotate_proxy()
-            return await self.download_soundcloud_audio(song_request, search_by_title)
-            
     async def rotate_proxy(self):
-        # Смена прокси при проблемах
-        try:
-            self.proxy_list.append(self.proxy_list.pop(0))
-            self.current_proxy = None
-            print("Ротация прокси... Новый список:", self.proxy_list)
-        except Exception as e:
-            print("Ошибка ротации прокси:", str(e))
+    #"""Улучшенная ротация с сохранением рабочего прокси"""
+        if len(self.proxy_list) < 2:
+            return
+        
+        current_index = self.proxy_list.index(self.current_proxy) if self.current_proxy else 0
+        new_index = (current_index + 1) % len(self.proxy_list)
+        self.proxy_list = self.proxy_list[new_index:] + self.proxy_list[:new_index]
+        self.current_proxy = None
 
     
     async def now_playing(self):
