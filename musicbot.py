@@ -1,37 +1,25 @@
+
 from highrise import *
 from highrise.models import *
+import yt_dlp as youtube_dl
 import os
 import subprocess
 from highrise import BaseBot, User
+from concurrent.futures import ThreadPoolExecutor
 import asyncio
 import shutil
 from highrise.__main__ import BotDefinition, main, import_module, arun
 import time
 import sqlite3
-import json
+import json # Import the json library for queue persistence
+import random
 import aiohttp
-from yandex_music import ClientAsync
-import logging
-from urllib.parse import urlparse
 
-# Настройка логов
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("YandexMusicBot")
-
-# Конфигурация
-YANDEX_TOKEN = "y0__xCToNy2Bxje-AYgzoKAqhI4KZ5ZDaz1AkEnFYMkih4HYbnBag"  # Замените на реальный токен
-DB_PATH = "musicbot.db"
-DOWNLOAD_DIR = "downloads"
-ICECAST_URL = "icecast://sadfsdafdsa_sdafasdfasd:teenparalich0@live.radioking.com:80/kraken-radioooo"
-
-# BOT SETTINGS
-bot_file_name = "musicbot"
-bot_class_name = "xenoichi"
-room_id = "67372d6e6c5bb6d658b48c8a"
-bot_token = "16cdf17cd22e24df641e053066713cd0245a54747532b122ee7634a25194a0fa"
+# --- DATABASE SETUP ---
+db_path = "musicbot.db"
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
@@ -45,60 +33,73 @@ def init_db():
             queue TEXT
         )
     ''')
+
     conn.commit()
     conn.close()
 
 init_db()
 
+# BOT SETTINGS #
+bot_file_name = "musicbot"
+bot_class_name = "xenoichi"
+room_id = "67372d6e6c5bb6d658b48c8a"
+bot_token = "16cdf17cd22e24df641e053066713cd0245a54747532b122ee7634a25194a0fa"
+
 if __name__ == "__main__":
     definitions = [
-        BotDefinition(
-            getattr(import_module(bot_file_name), bot_class_name)(),
-            room_id, bot_token)
+            BotDefinition(
+                getattr(import_module(bot_file_name), bot_class_name)(),
+                room_id, bot_token)
     ]
 
     while True:
         try:
             arun(main(definitions))
-        except (aiohttp.client_exceptions.ClientConnectionResetError, Exception) as e:
+        except (aiohttp.client_exceptions.ClientConnectionResetError, Exception) as e:  # Перехватываем конкретную ошибку и общую Exception
             import traceback
             print("Caught an exception:")
             traceback.print_exc()
             print("Restarting bot...")
-            time.sleep(5)
+            time.sleep(5)  # Пауза перед перезапуском
             continue
+
+
 
 class xenoichi(BaseBot):
     def __init__(self):
         super().__init__()
-        self.conn = sqlite3.connect(DB_PATH)
+        self.conn = sqlite3.connect(db_path)
         self.cursor = self.conn.cursor()
         self.song_queue = []
         self.currently_playing = False
         self.skip_event = asyncio.Event()
         self.ffmpeg_process = None
-        self.current_song = None
-        self.admins = {'fedorballz', 'Skara0'}
-        self.ready = asyncio.Event()
+        self.currently_playing_title = None
+        self.admins = {'fedorballz', 'Skara0'}  # Add your admin usernames here
+        self.ready = asyncio.Event() # Change here
         self.play_lock = asyncio.Lock()
         self.play_task = None
         self.play_event = asyncio.Event()
+        self.valid_url_prefixes = ['https://www.youtube.com/', 'https://youtube.com/', 'https://youtu.be/', "https://on.soundcloud.com/", "https://soundcloud.com"] #Added valid prefixes
         self.current_position_ms = 0
         self.start_time_ms = None
         self.stream_stop_event = asyncio.Event()
         self.request_queue = asyncio.Queue()
         self.request_lock = asyncio.Lock()
-        self.client = None # Yandex Music Client
+
+
+    def close_db(self):
+        self.conn.close()
 
     messages_dict_dj = {
-            "greeting1": "\n🎵 Включаем музыку!  Добро пожаловать к нашему DJ-боту!\n\n🎧 Закажи песню командой /play [название песни] или /linkplay [ссылка Yandex Music].\n",
-            "greeting2": "\n🎶 Привет! \n\n🎵 Используй команду /play [название песни] или /linkplay [ссылка Yandex Music], чтобы добавить трек в очередь.\n",
-            "greeting3": "\n🎤 DJ-бот в сети!  Заказывай свои любимые песни!\n\n🎶 Отправь чаевые, чтобы пополнить баланс и заказать песню\n",
-            "balance_reminder": "\n💰 Проверь свой баланс командой /bal\n\n🎧 Не забудь, что за каждую песню списывается 10 голды!\n",
-            "tip_reminder": "\n✨ Хочешь поддержать бота?  Отправь чаевые в размере 10г и закажи песню\n\n🎵 /play [название песни] или /linkplay [ссылка Yandex Music]\n",
-            "command_list": "\nСписок команд:\n\n/play [название песни] - Заказать песню по названию\n/linkplay [ссылка] - Заказать песню по ссылке Yandex Music",
-            "command_list2": "\nСписок команд:\n\n/skip - пропустить свой трек\n/bal - Проверить баланс\n/np - Узнать название трека\n/q - узнать очередь\n\nОтправь чаевые, чтобы пополнить баланс"
-        }
+        "greeting1": "\n🎵 Включаем музыку!  Добро пожаловать к нашему DJ-боту!\n\n🎧 Закажи песню командой /play [название песни] или /linkplay [ссылка Youtube или SoundCloud].\n",
+        "greeting2": "\n🎶 Привет! \n\n🎵 Используй команду /play [название песни] или /linkplay [ссылка Youtube или SoundCloud], чтобы добавить трек в очередь.\n",
+        "greeting3": "\n🎤 DJ-бот в сети!  Заказывай свои любимые песни!\n\n🎶 Отправь чаевые, чтобы пополнить баланс и заказать песню\n",
+        "balance_reminder": "\n💰 Проверь свой баланс командой /bal\n\n🎧 Не забудь, что за каждую песню списывается 10 голды!\n",
+        "tip_reminder": "\n✨ Хочешь поддержать бота?  Отправь чаевые в размере 10г и закажи песню\n\n🎵 /play [название песни] или /linkplay [ссылка Youtube или SoundCloud]\n",
+        "command_list": "\nСписок команд:\n\n/play [название песни] - Заказать песню по названию\n/linkplay [ссылка] - Заказать песню по ссылке Youtube или SoundCloud",
+        "command_list2": "\nСписок команд:\n\n/skip - пропустить свой трек\n/bal - Проверить баланс\n/np - Узнать название трека\n/q - узнать очередь\n\nОтправь чаевые, чтобы пополнить баланс"
+    }
 
 
     async def repeat_jackpot_rules(self):
@@ -117,35 +118,28 @@ class xenoichi(BaseBot):
                 continue
             message_index = (message_index + 1) % len(messages)
             await asyncio.sleep(60)
-    
-    async def connect_yandex(self):
-        try:
-            self.client = await ClientAsync(YANDEX_TOKEN).init()
-            logger.info("Успешное подключение к Яндекс.Музыке")
-        except Exception as e:
-            logger.error(f"Ошибка подключения к Яндекс.Музыке: {e}")
 
     async def on_start(self, session_metadata):
-        await self.connect_yandex()
         asyncio.create_task(self.repeat_jackpot_rules())
         await self.highrise.walk_to(Position(16.5, 0.0, 20.5))
 
         print("Xenbot is armed and ready!")
         print("Bot is starting... cleaning up any active streams.")
+
         await self.stop_existing_stream()
 
         self.currently_playing = False
-        await self.load_queue()
+        await self.load_queue() # Load the queue on bot start
 
         await asyncio.sleep(5)
 
         self.play_task = asyncio.create_task(self.playback_loop())
-        self.ready.set()
+        self.ready.set()  # Set to true, now it is ready
         await asyncio.sleep(3)
 
     async def on_user_join(self, user: User, position: Position) -> None:
-        await self.highrise.send_whisper(user.id, self.messages_dict_dj["command_list"])
-        await self.highrise.send_whisper(user.id, self.messages_dict_dj["command_list2"])
+        await self.highrise.send_whisper(user.id, f"\nСписок команд:\n\n/play [название песни] - Заказать песню по названию\n/linkplay [ссылка] - Заказать песню по ссылке Youtube или SoundCloud")
+        await self.highrise.send_whisper(user.id, f"\n/skip - пропустить свой трек\n/bal - Проверить баланс\n/np - Узнать название трека\n/q - узнать очередь\n\nОтправь чаевые, чтобы пополнить баланс")
         self.add_user_to_db(user.username)
 
     def add_user_to_db(self, username):
@@ -172,22 +166,22 @@ class xenoichi(BaseBot):
             print(f"Database error updating balance: {e}")
 
     async def on_tip(self, sender: User, receiver: User, tip: CurrencyItem) -> None:
-        if receiver.username == "KrakenDJ":
+        if receiver.username == "KrakenDJ":  # Check if the tip is for the bot
             try:
+                # Reduce sender's balance
                 self.update_user_balance(sender.username, tip.amount)
                 await self.highrise.chat(f"@{sender.username} пополнил(a) баланс на {tip.amount} голды!")
             except Exception as e:
-                print(f"Error processing tip: {e}")
+                print(f"Error processing tip: {e}")  # Handle potential errors
 
     def is_admin(self, username):
         return username in self.admins
 
     async def on_chat(self, user: User, message: str) -> None:
-        await self.ready.wait()
+        await self.ready.wait() #Wait for bot to be ready
         if message.lower() == "/walletdj":
             wallet = (await self.highrise.get_wallet()).content
             await self.highrise.send_whisper(user.id, f"\nУ бота в кошельке {wallet[0].amount} {wallet[0].type}")
-
         if message.lower().startswith("/tipmedj "):
             if user.username not in allowed_usernames:
                 await self.highrise.send_whisper(user.id, "\n❌ Это команда тебе не доступна!")
@@ -196,25 +190,42 @@ class xenoichi(BaseBot):
             if len(parts) != 2:
                 await self.highrise.send_message(user.id, "Invalid command")
                 return
-
+            #checks if the amount is valid
             try:
                 amount = int(parts[1])
             except:
                 await self.highrise.chat("Invalid amount")
                 return
-
+            #checks if the bot has the amount
             bot_wallet = await self.highrise.get_wallet()
             bot_amount = bot_wallet.content[0].amount
             if bot_amount <= amount:
                 await self.highrise.chat("Not enough funds")
                 return
-
-            bars_dictionary = {10000: "gold_bar_10k", 5000: "gold_bar_5000", 1000: "gold_bar_1k",
-                               500: "gold_bar_500", 100: "gold_bar_100", 50: "gold_bar_50",
-                               10: "gold_bar_10", 5: "gold_bar_5", 1: "gold_bar_1"}
-            fees_dictionary = {10000: 1000, 5000: 500, 1000: 100, 500: 50,
-                               100: 10, 50: 5, 10: 1, 5: 1, 1: 1}
-
+            #converts the amount to a string of bars and calculates the fee
+            """Possible values are: "gold_bar_1",
+            "gold_bar_5", "gold_bar_10", "gold_bar_50", 
+            "gold_bar_100", "gold_bar_500", 
+            "gold_bar_1k", "gold_bar_5000", "gold_bar_10k" """
+            bars_dictionary = {10000: "gold_bar_10k", 
+                               5000: "gold_bar_5000",
+                               1000: "gold_bar_1k",
+                               500: "gold_bar_500",
+                               100: "gold_bar_100",
+                               50: "gold_bar_50",
+                               10: "gold_bar_10",
+                               5: "gold_bar_5",
+                               1: "gold_bar_1"}
+            fees_dictionary = {10000: 1000,
+                               5000: 500,
+                               1000: 100,
+                               500: 50,
+                               100: 10,
+                               50: 5,
+                               10: 1,
+                               5: 1,
+                               1: 1}
+            #loop to check the highest bar that can be used and the amount of it needed
             tip = []
             total = 0
             for bar in bars_dictionary:
@@ -223,19 +234,18 @@ class xenoichi(BaseBot):
                     amount = amount % bar
                     for i in range(bar_amount):
                         tip.append(bars_dictionary[bar])
-                        total = bar + fees_dictionary[bar]
+                        total = bar+fees_dictionary[bar]
             if total > bot_amount:
                 await self.highrise.chat("Not enough funds")
                 return
             for bar in tip:
                 await self.highrise.tip_user(user.id, bar)
-
         if message.startswith('/cash'):
             if user.username not in allowed_usernames:
                 await self.highrise.send_whisper(user.id, "\n❌ Это команда тебе не доступна!")
                 return
             parts = message.split()
-            if len(parts) > 2:
+            if len(parts) > 2:  # Check if username and amount are provided
                 target_username = parts[1].replace("@", "")
                 try:
                     amount = int(parts[2])
@@ -249,38 +259,37 @@ class xenoichi(BaseBot):
                 except Exception as e:
                     await self.highrise.send_whisper(user.id, f"Ошибка при добавлении на баланс @{target_username}: {e}")
             else:
-                await self.highrise.send_whisper(user.id, "Используй: /cash @username amount")
-
+                await self.highrise.send_whisper(user.id, "Используй: /cash @username amount") #Correct usage
         if message.startswith('/play '):
             song_request = message[len('/play '):].strip()
-            cost = 10
-            balance = self.get_user_balance(user.username)
 
-            if self.is_valid_yandex_url(song_request):
+            if self.is_valid_url(song_request):
                 await self.highrise.send_whisper(user.id, "Похоже, вы ввели ссылку. Пожалуйста, используйте команду /linkplay для воспроизведения по ссылке.")
                 return
 
-            if balance >= cost:
-                self.update_user_balance(user.username, -cost)
-                await self.add_to_queue(song_request, user.username, search_by_title=True)
-            else:
-                await self.highrise.send_whisper(user.id, f"\n❌ Недостаточно средств для запроса песни. Нужно {cost} голды.\n\nВаш баланс: {balance}.")
-
-        if message.startswith('/linkplay '):
-            song_request = message[len('/linkplay '):].strip()
             cost = 10
             balance = self.get_user_balance(user.username)
 
-            if not self.is_valid_yandex_url(song_request):
-                await self.highrise.send_whisper(user.id, "Неверная ссылка, я могу только по ссылкам с Yandex Music")
+            if balance >= cost:
+                self.update_user_balance(user.username, -cost)
+                await self.add_to_queue(song_request, user.username, search_by_title = True)
+            else:
+                await self.highrise.send_whisper(user.id, f"\n❌ Недостаточно средств для запроса песни. Нужно {cost} голды.\n\nВаш баланс: {balance}.")
+        if message.startswith('/linkplay '): # search by link
+            song_request = message[len('/linkplay '):].strip()
+
+            if not self.is_valid_url(song_request):
+                await self.highrise.send_whisper(user.id, "Неверная ссылка, я могу только по Youtube или SoundCloud")
                 return
+
+            cost = 10
+            balance = self.get_user_balance(user.username)
 
             if balance >= cost:
                 self.update_user_balance(user.username, -cost)
-                await self.add_to_queue(song_request, user.username, search_by_title=False)
+                await self.add_to_queue(song_request, user.username, search_by_title = False)
             else:
                 await self.highrise.send_whisper(user.id, f"\n❌ Недостаточно средств для запроса песни. Нужно {cost} голды.\n\nВаш баланс: {balance}.")
-
         if message.startswith('/q'):
             page_number = 1
             try:
@@ -297,18 +306,18 @@ class xenoichi(BaseBot):
             await self.now_playing()
         elif message.startswith('/shutdown'):
             if self.is_admin(user.username):
-                await self.shutdown_bot()
+               await self.shutdown_bot()
             else:
                 await self.highrise.send_whisper(user.id, "\n❌ Это команда тебе не доступна!")
 
-    def is_valid_yandex_url(self, url):
-        try:
-            parsed_url = urlparse(url)
-            return 'music.yandex.ru' in parsed_url.netloc
-        except:
-            return False
+    def is_valid_url(self, url):
+        for prefix in self.valid_url_prefixes:
+            if url.startswith(prefix):
+                return True
+        return False
 
     async def shutdown_bot(self):
+        """Gracefully shuts down the bot and triggers a restart."""
         print("Shutting down the bot...")
         await self.highrise.chat("Бот перезагружается...")
 
@@ -322,9 +331,11 @@ class xenoichi(BaseBot):
                 pass
 
         self.close_db()
+        
         self.clear_downloads_folder()
         print("Bot shutdown initiated.")
         raise Exception("Bot is shutting down and restarting")
+
 
     async def add_to_queue(self, song_request, owner, search_by_title=True):
         await self.request_queue.put({'song_request': song_request, 'owner': owner, 'search_by_title': search_by_title})
@@ -332,7 +343,7 @@ class xenoichi(BaseBot):
 
     async def process_request_queue(self):
         if self.request_lock.locked():
-            return
+            return #If already locked, then the current function is running
 
         async with self.request_lock:
             while not self.request_queue.empty():
@@ -344,17 +355,10 @@ class xenoichi(BaseBot):
                 await self.highrise.chat(f"@{owner} ищу песню... Пожалуйста, подождите.")
 
                 try:
-                    file_path, title, duration, is_playlist = await self.download_yandex_audio(song_request, search_by_title)
+                    file_path, title, duration, is_playlist = await self.download_soundcloud_audio(song_request, search_by_title)
                 except Exception as e:
                     print(f"Error while downloading: {e}")
                     await self.highrise.chat(f"Произошла ошибка при скачивании трека, попробуйте позже. @{owner}")
-                    self.request_queue.task_done()
-                    continue
-
-                if file_path is None or title is None:
-                    logger.warning(f"Не удалось скачать трек для запроса: {song_request}, @{owner}")
-                    await self.highrise.chat(f"Не удалось найти трек | @{owner}")
-                    self.request_queue.task_done()
                     self.request_queue.task_done()
                     continue
 
@@ -372,7 +376,6 @@ class xenoichi(BaseBot):
                         os.remove(file_path)
                     self.request_queue.task_done()
                     continue
-
                 formatted_duration = self.format_time(duration)
                 message = f"""
       🎶 Добавлено в очередь:
@@ -390,80 +393,8 @@ class xenoichi(BaseBot):
                     self.play_task = asyncio.create_task(self.playback_loop())
 
                 self.play_event.set()
-
-                # Перемещаем вызов stream сюда, чтобы убедиться, что файл скачан
-                if file_path:
-                    try:
-                        await self.stream(file_path)
-                    except Exception as e:
-                        logger.error(f"Ошибка при стриминге трека: {e}")
-                        await self.highrise.chat("Произошла ошибка при воспроизведении трека.")
-
                 self.request_queue.task_done()
-    async def download_yandex_audio(self, query: str, search_by_title: bool = True) -> tuple:
-        logger.info(f"Начало загрузки трека: {query}, поиск по названию: {search_by_title}")
-        try:
-            if self.client is None:
-                await self.connect_yandex()
-                if self.client is None:
-                    logger.error("Yandex Music client не инициализирован.")
-                    return None, None, 0, False
 
-            if search_by_title:
-                logger.info(f"Поиск трека по названию: {query}")
-                search_result = await self.client.search(query, type_='track')
-                if not search_result.tracks:
-                    logger.warning(f"Не найдено треков по запросу: {query}")
-                    return None, None, 0, False
-                track = search_result.tracks.results[0]
-            else:
-                logger.info(f"Поиск трека по ссылке: {query}")
-                track_id = self.parse_track_id(query)
-                if not track_id:
-                    logger.warning(f"Неверный ID трека в запросе: {query}")
-                    return None, None, 0, False
-                track = (await self.client.tracks(track_id))[0]
-
-            download_info = await track.get_download_info(get_direct_links=True)
-            best_link = max([d for d in download_info if d.codec == 'mp3'],
-                          key=lambda x: x.bitrate_in_kbps)
-            
-            file_path = f"{DOWNLOAD_DIR}/{track.id}.mp3"
-            await self.download_file(best_link.direct_link, file_path)
-            
-            return (
-                file_path,
-                f"{track.title} - {', '.join(a.name for a in track.artists)}",
-                track.duration_ms // 1000,
-                False
-            )
-        except Exception as e:
-            logger.error(f"Ошибка загрузки: {e}")
-            return None, None, 0, False
-
-    async def download_file(self, url: str, path: str):
-        logger.info(f"Начало скачивания файла: {url} -> {path}")
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.get(url) as resp:
-                    if resp.status == 200:
-                        logger.info(f"Файл {path} успешно скачан, сохраняю на диск.")
-                        with open(path, 'wb') as f:
-                            async for chunk in resp.content.iter_chunked(1024):
-                                f.write(chunk)
-                        logger.info(f"Файл {path} сохранен успешно.")
-                    else:
-                        logger.error(f"Ошибка при скачивании файла: {resp.status} {resp.reason}")
-                        return
-            except Exception as e:
-                logger.error(f"Ошибка при скачивании файла: {e}")
-
-    def parse_track_id(self, url: str) -> int:
-        try:
-            path = urlparse(url).path
-            return int(path.split('/')[-1])
-        except:
-            return None
 
     async def check_queue(self, page_number=1):
         try:
@@ -484,7 +415,10 @@ class xenoichi(BaseBot):
             end_index = min(start_index + songs_per_page, total_songs)
 
             for index, song in enumerate(self.song_queue[start_index:end_index], start=start_index + 1):
+                # Get the duration, default to 0 if not available
                 duration = song.get('duration', 0)
+
+                # Format the duration as MM:SS
                 duration_minutes = int(duration // 60)
                 duration_seconds = int(duration % 60)
                 formatted_duration = f"{duration_minutes}:{duration_seconds:02d}"
@@ -497,23 +431,73 @@ class xenoichi(BaseBot):
                 await self.highrise.chat(f"Используйте '/q {page_number + 1}' для просмотра следующей страницы.")
 
         except Exception as e:
+            # Handle any error that occurs
             print(f"Произошла ошибка: {str(e)}")
 
-    async def now_playing(self):
-        if self.current_song:
-            current_song_owner = self.current_song['owner']
-            song_duration = self.current_song['duration']
+    async def download_soundcloud_audio(self, song_request, search_by_title=True):
+    """Скачивает аудио с SoundCloud и возвращает путь к файлу, название и длительность"""
+        try:
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'outtmpl': 'downloads/%(id)s.%(ext)s',
+                'default_search': 'scsearch' if search_by_title else None,
+                'quiet': True,
+                'noplaylist': True,
+                'source_address': '0.0.0.0',
+                'extract_flat': True,
+            }
 
+            with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+                if search_by_title:
+                    # Поиск по названию
+                    info = ydl.extract_info(f"scsearch:{song_request}", download=False)
+                    if not info or 'entries' not in info or len(info['entries']) == 0:
+                        return None, None, 0, False
+                
+                    info = info['entries'][0]
+                else:
+                # Прямая ссылка
+                    info = ydl.extract_info(song_request, download=False)
+
+            # Обработка плейлистов
+                if 'entries' in info:
+                    if len(info['entries']) > 1:
+                        return None, None, 0, True
+                    info = info['entries'][0]
+
+            # Проверка существования файла
+                file_path = f"downloads/{info['id']}.{info['ext']}"
+                if os.path.exists(file_path):
+                    return file_path, info['title'], info['duration'], False
+
+            # Скачивание
+                ydl.download([info['webpage_url']])
+            
+                return file_path, info['title'], info['duration'], False
+
+        except youtube_dl.DownloadError as e:
+            print(f"Ошибка скачивания с SoundCloud: {e}")
+            return None, None, 0, False
+        except Exception as e:
+            print(f"Общая ошибка: {e}")
+            return None, None, 0, False
+
+    async def now_playing(self):
+        if self.currently_playing_title:
+            current_song_owner = self.current_song['owner'] if self.current_song else "Unknown"
+            song_duration = self.current_song['duration'] if self.current_song else 0
+            
             current_position = 0
             if hasattr(self, 'current_position_ms') and hasattr(self, 'start_time_ms') and isinstance(self.current_position_ms, (int, float)) and isinstance(self.start_time_ms, (int, float)):
-                current_position = int(self.current_position_ms - self.start_time_ms) // 1000
+                current_position = int(self.current_position_ms - self.start_time_ms) // 1000000
 
             progress_bar = self.create_progress_bar(current_position, song_duration, 20)
+            
             formatted_duration = self.format_time(song_duration)
             formatted_current = self.format_time(current_position)
 
             message = f"""
-  🎧 Сейчас играет: {self.current_song['title']}
+  🎧 Сейчас играет: {self.currently_playing_title}
    🎵 Включил: @{current_song_owner}
 
       {progress_bar} {formatted_current}/{formatted_duration}
@@ -529,8 +513,9 @@ class xenoichi(BaseBot):
                 self.currently_playing = True
                 next_song = self.song_queue.pop(0)
                 self.current_song = next_song
-                self.start_time_ms = None
-
+                self.currently_playing_title = next_song['title']
+                self.start_time_ms = None # Reset start time
+                
                 song_title = next_song['title']
                 song_owner = next_song['owner']
                 file_path = next_song['file_path']
@@ -543,25 +528,20 @@ class xenoichi(BaseBot):
                      """
                 await self.highrise.chat(message)
                 print(f"Playing: {song_title}")
+                
+                mp3_file_path = await self.convert_to_mp3(file_path)
 
-                if file_path:
-                    try:
-                        await self.stream(file_path)
-                    except Exception as e:
-                        logger.error(f"Ошибка при стриминге трека: {e}")
-                        await self.highrise.chat("Произошла ошибка при воспроизведении трека.")
-                else:
-                    logger.warning("Путь к файлу не указан, пропускаю трек.")
-                    await self.highrise.chat("Ошибка при воспроизведении трека, пропускаю.")
-                self.currently_playing = False
-                continue
+                if mp3_file_path:
+                    await self.stream(mp3_file_path)
 
-                while self.ffmpeg_process and self.ffmpeg_process.returncode is None:
-                    await asyncio.sleep(0.1)
+                    while self.ffmpeg_process and self.ffmpeg_process.returncode is None: #wait for stream to finish.
+                       await asyncio.sleep(0.1)
 
-                if file_path and os.path.exists(file_path):
-                    os.remove(file_path)
-
+                    if os.path.exists(mp3_file_path):
+                        os.remove(mp3_file_path)
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                
                 await self.save_queue()
 
             if not self.song_queue:
@@ -569,31 +549,77 @@ class xenoichi(BaseBot):
                 await self.highrise.chat("Теперь очередь пуста.")
 
             self.currently_playing = False
+            self.currently_playing_title = None
+
+
 
     def create_progress_bar(self, current_position, total_duration, bar_length=20):
         if total_duration == 0:
-            return "[====================]"
+           return "[====================]"
         progress = min(max(current_position, 0), total_duration) / total_duration
         filled_length = int(round(bar_length * progress))
         empty_length = bar_length - filled_length
+
         bar = "█" * filled_length + "░" * empty_length
         return f"[{bar}]"
 
     def format_time(self, total_seconds):
-        minutes = int(total_seconds // 60)
-        seconds = int(total_seconds % 60)
-        return f"{minutes:02d}:{seconds:02d}"
+       minutes = int(total_seconds // 60)
+       seconds = int(total_seconds % 60)
+       return f"{minutes:02d}:{seconds:02d}"
+
+    async def convert_to_mp3(self, audio_file_path):
+    """Конвертация в MP3 с оптимизацией для SoundCloud"""
+        try:
+            if audio_file_path.endswith('.mp3'):
+                return audio_file_path
+
+            mp3_file_path = audio_file_path.rsplit('.', 1)[0] + '.mp3'
+        
+        # Параметры для улучшения совместимости с радио-стримингом
+            ffmpeg_command = [
+                'ffmpeg',
+                '-i', audio_file_path,
+                '-codec:a', 'libmp3lame',
+                '-q:a', '2',  # Качество 0-9 (0 - наивысшее)
+                '-ar', '44100',
+                '-ac', '2',
+                '-b:a', '192k',
+                '-af', 'compand=0.3|1:0.5|0.5:-90/-50/-20/-0.2/0',  # Компрессия
+                '-vsync', '2',
+                mp3_file_path
+            ]
+
+            process = await asyncio.create_subprocess_exec(
+                *ffmpeg_command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+        
+            await process.communicate()
+        
+            if process.returncode != 0:
+                print("Ошибка конвертации в MP3")
+                return None
+            
+            return mp3_file_path
+        
+        except Exception as e:
+            print(f"Ошибка конвертации: {e}")
+            return None
 
     async def stream(self, mp3_file_path):
+        """Streams the audio file to Icecast and tracks the current playback position."""
         await asyncio.create_task(self._stream_to__thread(mp3_file_path))
+
 
     async def _stream_to__thread(self, mp3_file_path):
         try:
             icecast_server = "live.radioking.com"
             icecast_port = 80
-            mount_point = "/kraken-radio"
-            username = "wqeqwewq_qwewqe"
-            password = "teenparalich000!"
+            mount_point = "/kraken-radioooo"
+            username = "sadfsdafdsa_sdafasdfasd"
+            password = "teenparalich0"
             icecast_url = f"icecast://{username}:{password}@{icecast_server}:{icecast_port}{mount_point}"
 
             if self.ffmpeg_process:
@@ -610,7 +636,7 @@ class xenoichi(BaseBot):
                 '-progress', 'pipe:1',
                 icecast_url
             ]
-
+            
             self.ffmpeg_process = await asyncio.create_subprocess_exec(
                 *command,
                 stdout=asyncio.subprocess.PIPE,
@@ -618,7 +644,7 @@ class xenoichi(BaseBot):
             )
             self.current_position_ms = 0
             self.start_time_ms = None
-
+            
             while True:
                 line = await self.ffmpeg_process.stdout.readline()
                 if not line:
@@ -631,12 +657,11 @@ class xenoichi(BaseBot):
                     ms = int(line.split("=")[1])
                     self.current_position_ms = ms
                     if self.start_time_ms is None:
-                        self.start_time_ms = ms
+                        self.start_time_ms = ms # Set start time if not set yet
                 if line.startswith("progress=end"):
                     break
                 if self.stream_stop_event.is_set():
                     break
-
             if self.ffmpeg_process.returncode != 0:
                 print(f"FFmpeg process exited with code {self.ffmpeg_process.returncode}")
                 if self.ffmpeg_process.stderr:
@@ -651,9 +676,12 @@ class xenoichi(BaseBot):
                     self.ffmpeg_process.terminate()
                     await self.ffmpeg_process.wait()
                 self.ffmpeg_process = None
-        self.stream_stop_event.clear()
+        self.stream_stop_event.clear() # Clear the flag when the stream finishes
+
+
 
     async def skip_song(self, user):
+        """Allows an admin or the requester of the current song to skip."""
         if self.currently_playing:
             if self.is_admin(user.username) or (self.current_song and self.current_song['owner'] == user.username):
                 self.stream_stop_event.set()
@@ -665,7 +693,9 @@ class xenoichi(BaseBot):
         else:
             await self.highrise.chat("В настоящее время не воспроизводится ни одна песня, которую можно пропустить.")
 
+
     def clear_downloads_folder(self):
+        """Deletes all files in the downloads folder."""
         downloads_path = 'downloads'
         if os.path.exists(downloads_path):
             for filename in os.listdir(downloads_path):
@@ -678,7 +708,9 @@ class xenoichi(BaseBot):
                 except Exception as e:
                     print(f"Error deleting file {file_path}: {e}")
 
+
     async def stop_existing_stream(self):
+        """Check if an active stream is running and stop it if necessary."""
         if self.ffmpeg_process:
             print("Stopping active stream...")
             try:
@@ -692,10 +724,8 @@ class xenoichi(BaseBot):
         else:
             print("No active stream to stop.")
 
-    def close_db(self):
-      self.conn.close()
-
     async def save_queue(self):
+        """Saves the current song queue to the database."""
         try:
             queue_json = json.dumps(self.song_queue)
             self.cursor.execute("INSERT OR REPLACE INTO queue_data (id, queue) VALUES (1, ?)", (queue_json,))
@@ -705,6 +735,7 @@ class xenoichi(BaseBot):
             print(f"Database error saving queue: {e}")
 
     async def load_queue(self):
+        """Loads the song queue from the database."""
         try:
             self.cursor.execute("SELECT queue FROM queue_data WHERE id = 1")
             result = self.cursor.fetchone()
@@ -715,7 +746,7 @@ class xenoichi(BaseBot):
                 print("No queue data found in the database.")
         except sqlite3.Error as e:
             print(f"Database error loading queue: {e}")
-            self.song_queue = []
+            self.song_queue = [] # In case loading fails, empty queue to not crash
 
     async def on_close(self):
         self.close_db()
