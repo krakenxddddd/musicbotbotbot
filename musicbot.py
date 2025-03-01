@@ -143,20 +143,25 @@ class xenoichi(BaseBot):
         await asyncio.sleep(3)
 
     async def get_working_proxy(self):
-        # Тестирует доступные прокси и возвращает рабочий
-        async with aiohttp.ClientSession() as session:
-            for proxy in self.proxy_list:
-                try:
-                    async with session.get('https://soundcloud.com', 
-                                         proxy=proxy,
-                                         timeout=self.proxy_timeout) as resp:
-                        if resp.status == 200:
-                            self.current_proxy = proxy
-                            return proxy
-                except Exception as e:
-                    print(f"Прокси {proxy} не работает: {str(e)}")
-                    continue
-        raise Exception("Не удалось найти рабочий прокси!")
+    # Проверка прокси с обработкой исключений"""
+        try:
+            async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
+                for proxy in self.proxy_list:
+                    try:
+                        async with session.get(
+                            'https://soundcloud.com',
+                            proxy=proxy,
+                            timeout=aiohttp.ClientTimeout(total=15)
+                        ) as resp:
+                            if resp.status == 200:
+                                return proxy
+                    except Exception as e:
+                        print(f"[Прокси {proxy}] Ошибка: {type(e).__name__}")
+                        continue
+            raise Exception("Все прокси нерабочие")
+        except Exception as e:
+            print(f"Критическая ошибка: {str(e)}")
+            return None  # Возвращаем None для обработки в вызывающем коде
     
     async def on_user_join(self, user: User, position: Position) -> None:
         await self.highrise.send_whisper(user.id, f"\nСписок команд:\n\n/play [название песни] - Заказать песню по названию\n/linkplay [ссылка] - Заказать песню по ссылке Youtube или SoundCloud")
@@ -457,8 +462,11 @@ class xenoichi(BaseBot):
 
     async def download_soundcloud_audio(self, song_request, search_by_title=True):
     # Скачивает аудио с SoundCloud и возвращает путь к файлу, название и длительность
+        proxy = None  # Инициализация переменной
         try:
+        # Получаем рабочий прокси
             proxy = await self.get_working_proxy()
+        
             ydl_opts = {
                 'format': 'bestaudio/best',
                 'outtmpl': 'downloads/%(id)s.%(ext)s',
@@ -467,8 +475,11 @@ class xenoichi(BaseBot):
                 'noplaylist': True,
                 'source_address': '0.0.0.0',
                 'extract_flat': True,
+                'proxy': proxy,
+                'socket_timeout': 30,
+                'force_ipv4': True,
+                'nocheckcertificate': True  # Отключаем проверку сертификатов
             }
-
             with youtube_dl.YoutubeDL(ydl_opts) as ydl:
                 if search_by_title:
                     # Поиск по названию
@@ -504,7 +515,6 @@ class xenoichi(BaseBot):
             print(f"Ошибка при использовании прокси {proxy}: {str(e)}")
             await self.rotate_proxy()
             return await self.download_soundcloud_audio(song_request, search_by_title)
-            return None, None, 0, False
             
     async def rotate_proxy(self):
         # Смена прокси при проблемах
