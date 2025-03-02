@@ -665,7 +665,7 @@ class xenoichi(BaseBot):
                 '-reconnect', '1',
                 '-reconnect_streamed', '1',
                 '-reconnect_delay_max', '5',
-                '-headers', f'Authorization: Basic {base64.b64encode(f"{username}:{password}".encode()).decode()}'
+                '-headers', f'Authorization: Basic {base64.b64encode(f"{username}:{password}".encode()).decode()}',
                 icecast_url
             ]
             
