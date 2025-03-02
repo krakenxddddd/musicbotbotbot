@@ -450,7 +450,7 @@ class xenoichi(BaseBot):
                     'format': 'bestaudio[ext=opus]/bestaudio/best',  # Приоритет OPUS -> другие форматы
                     'outtmpl': 'downloads/%(id)s.%(ext)s',           # Оригинальное расширение
                     'keepvideo': True,                               # Не удалять исходник
-                    'postprocessors': []                             # Отключить все конвертации  # Сохраняем сразу как MP3
+                    'postprocessors': [],                            # Отключить все конвертации
                     'proxy': proxy,
                     'nocheckcertificate': True,
                     'source_address': '0.0.0.0',
@@ -461,7 +461,6 @@ class xenoichi(BaseBot):
                         'Accept-Encoding': 'gzip, deflate',
                         'Referer': 'https://soundcloud.com/'
                     }
-
                 }
             
                 with youtube_dl.YoutubeDL(ydl_opts) as ydl:
