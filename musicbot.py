@@ -75,7 +75,7 @@ class xenoichi(BaseBot):
         self.skip_event = asyncio.Event()
         self.ffmpeg_process = None
         self.currently_playing_title = None
-        self.admins = {'fedorballz', 'Skara0'}  # Add your admin usernames here
+        self.admins = {'fedorballz', 'Skara0', 'naPharaone'}  # Add your admin usernames here
         self.ready = asyncio.Event() # Change here
         self.play_lock = asyncio.Lock()
         self.play_task = None
@@ -747,4 +747,4 @@ class xenoichi(BaseBot):
     async def on_close(self):
         self.close_db()
 
-allowed_usernames = ["fedorballz", "Skara0"]
+allowed_usernames = ["fedorballz", "Skara0", "naPharaone"]
