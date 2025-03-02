@@ -644,46 +644,6 @@ class xenoichi(BaseBot):
        seconds = int(total_seconds % 60)
        return f"{minutes:02d}:{seconds:02d}"
 
-    async def convert_to_mp3(self, audio_file_path):
-    # Конвертация в MP3 с оптимизацией для SoundCloud
-        try:
-            if audio_file_path.endswith('.mp3'):
-                return audio_file_path
-
-            mp3_file_path = audio_file_path.rsplit('.', 1)[0] + '.mp3'
-        
-        # Параметры для улучшения совместимости с радио-стримингом
-            ffmpeg_command = [
-                'ffmpeg',
-                '-i', audio_file_path,
-                '-codec:a', 'libmp3lame',
-                '-q:a', '2',  # Качество 0-9 (0 - наивысшее)
-                '-ar', '44100',
-                '-ac', '2',
-                '-b:a', '192k',
-                '-af', 'compand=0.3|1:0.5|0.5:-90/-50/-20/-0.2/0',  # Компрессия
-                '-vsync', '2',
-                mp3_file_path
-            ]
-
-            process = await asyncio.create_subprocess_exec(
-                *ffmpeg_command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-        
-            await process.communicate()
-        
-            if process.returncode != 0:
-                print("Ошибка конвертации в MP3")
-                return None
-            
-            return mp3_file_path
-        
-        except Exception as e:
-            print(f"Ошибка конвертации: {e}")
-            return None
-
     async def stream(self, mp3_file_path):
         """Streams the audio file to Icecast and tracks the current playback position."""
         await asyncio.create_task(self._stream_to__thread(mp3_file_path))
