@@ -615,8 +615,12 @@ class xenoichi(BaseBot):
                     if os.path.exists(file_path):
                         os.remove(file_path)
                     if file_path.endswith('.opus'):
-                        await self.stream(file_path)  # Прямая трансляция OPUS
-                        os.remove(file_path)          # Удаляем только после успеха
+                        try:
+                            await self.stream(file_path)  # Стримим OPUS напрямую
+                            os.remove(file_path)          # Удаляем только после успеха
+                        except Exception as e:
+                            print(f"Stream error: {e}")
+                            continue          # Удаляем только после успеха
                 
                 await self.save_queue()
 
@@ -709,6 +713,9 @@ class xenoichi(BaseBot):
 
         except Exception as e:
             print(f"Error streaming to Radioking: {e}")
+            error_msg = await self.ffmpeg_process.stderr.read()
+            print(f"FFMPEG ERROR: {error_msg.decode()}")
+            await self.highrise.chat("Ошибка стрима! Проверьте логи.")
         finally:
             if self.ffmpeg_process:
                 if self.ffmpeg_process.returncode is None:
