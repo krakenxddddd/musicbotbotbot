@@ -460,7 +460,7 @@ class xenoichi(BaseBot):
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
                         'Accept-Encoding': 'gzip, deflate',
                         'Referer': 'https://soundcloud.com/'
-                }
+                    }
 
                 }
             
