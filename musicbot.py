@@ -461,6 +461,8 @@ class xenoichi(BaseBot):
                         'Accept-Encoding': 'gzip, deflate',
                         'Referer': 'https://soundcloud.com/'
                 }
+
+                }
             
                 with youtube_dl.YoutubeDL(ydl_opts) as ydl:
                     ydl.params.update({'geo_bypass': True})
