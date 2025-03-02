@@ -447,8 +447,10 @@ class xenoichi(BaseBot):
         for attempt in range(max_retries):
             try:
                 ydl_opts = {
-                    'format': 'bestaudio/best[ext=mp3]',  # Явно указываем MP3
-                    'outtmpl': 'downloads/%(id)s.mp3',    # Сохраняем сразу как MP3
+                    'format': 'bestaudio[ext=opus]/bestaudio/best',  # Приоритет OPUS -> другие форматы
+                    'outtmpl': 'downloads/%(id)s.%(ext)s',           # Оригинальное расширение
+                    'keepvideo': True,                               # Не удалять исходник
+                    'postprocessors': []                             # Отключить все конвертации  # Сохраняем сразу как MP3
                     'proxy': proxy,
                     'nocheckcertificate': True,
                     'source_address': '0.0.0.0',
@@ -458,11 +460,6 @@ class xenoichi(BaseBot):
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
                         'Accept-Encoding': 'gzip, deflate',
                         'Referer': 'https://soundcloud.com/'
-                    },
-                    'postprocessors': [{
-                        'key': 'FFmpegExtractAudio',
-                        'preferredcodec': 'mp3',
-                    }]
                 }
             
                 with youtube_dl.YoutubeDL(ydl_opts) as ydl:
@@ -616,6 +613,9 @@ class xenoichi(BaseBot):
                         os.remove(mp3_file_path)
                     if os.path.exists(file_path):
                         os.remove(file_path)
+                    if file_path.endswith('.opus'):
+                        await self.stream(file_path)  # Прямая трансляция OPUS
+                        os.remove(file_path)          # Удаляем только после успеха
                 
                 await self.save_queue()
 
@@ -704,7 +704,7 @@ class xenoichi(BaseBot):
 
             command = [
                 'ffmpeg', '-re', '-i', mp3_file_path,
-                '-f', 'mp3', '-acodec', 'libmp3lame', '-ab', '192k',
+                '-f', 'ogg', '-acodec', 'libmp3lame', '-ab', '192k',
                 '-ar', '44100', '-ac', '2',
                 '-reconnect', '1', '-reconnect_streamed', '1',
                 '-reconnect_delay_max', '2',
