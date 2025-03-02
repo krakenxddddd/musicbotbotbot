@@ -465,48 +465,61 @@ class xenoichi(BaseBot):
                     }]
                 }
             
-            with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-                if search_by_title: #Searching by title
-                    info = ydl.extract_info(f"scsearch:{song_request}", download=False)
-                    if 'entries' in info:
-                        info = info['entries'][0]
-
-                    video_id = info['id']
-                    title = info['title']
-                    file_extension = info['ext']
-                    file_path = f"downloads/{video_id}.{file_extension}"
-                    
-                else: #Searching by link
-                    info = ydl.extract_info(song_request, download = False)
-
+                with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+                    ydl.params.update({'geo_bypass': True})
+                    info = ydl.extract_info(
+                        song_request if not search_by_title else f"scsearch:{song_request}",
+                        download=True
+                    )
+                
+                
                     if 'entries' in info:
                         if len(info['entries']) > 1:
-                           return None, None, 0, True
+                            return None, None, 0, True
                         info = info['entries'][0]
-
-                    video_id = info['id']
-                    title = info['title']
-                    file_extension = info['ext']
-                    file_path = f"downloads/{video_id}.{file_extension}"
-
-                if os.path.exists(file_path):
-                    print(f"The file '{file_path}' already exists, skipping download.")
-                    return file_path, title, int(info['duration']), False # Changed to int()
                 
-                info = ydl.extract_info(song_request, download=True)
-                if 'entries' in info:
-                    if len(info['entries']) > 1:
-                        return None, None, 0, True
-                    info = info['entries'][0]
+                    required_fields = ['id', 'ext', 'title', 'duration', 'webpage_url']
+                    for field in required_fields:
+                        if field not in info:
+                            raise ValueError(f"Отсутствует обязательное поле: {field}")
+                
+                    file_path = f"downloads/{info['id']}.{info['ext']}"
+                
+                    if os.path.exists(file_path):
+                        print(f"Файл уже существует: {file_path}")
+                        return file_path, info['title'], info['duration'], False
+                
+                    print(f"Начинаем скачивание: {info['webpage_url']}")
+                    ydl.download([info['webpage_url']])
+                
+                    if not os.path.exists(file_path):
+                        raise FileNotFoundError(f"Файл не был скачан: {file_path}")
+                
+                    return file_path, info['title'], info['duration'], False
 
-                video_id = info['id']
-                file_extension = info['ext']
-                file_path = f"downloads/{video_id}.{file_extension}"
-                print(f"Downloaded: {file_path} with title: {title}")
-                return file_path, title, int(info['duration']), False # Changed to int()
-        except Exception as e:
-              print(f"Error downloading the song: {e}")
-              return None, None, 0, False
+            except youtube_dl.utils.DownloadError as e:
+                print(f"[Попытка {attempt+1}] Ошибка скачивания: {str(e)}")
+                error_message = str(e).lower()
+            
+                if any(err in error_message for err in ['ext', 'format']):
+                    print("Обнаружена ошибка формата, изменяем параметры...")
+                    ydl_opts['postprocessors'][0]['preferredcodec'] = 'm4a'
+                    continue
+
+            except Exception as e:
+                print(f"[Попытка {attempt+1}] Критическая ошибка: {type(e).__name__} - {str(e)}")
+            
+                if len(self.proxy_list) > 1:
+                    await self.rotate_proxy()
+                    proxy_rotation_count += 1
+            
+                backoff_time = min(2 ** attempt, 10)
+                print(f"Повтор через {backoff_time} сек...")
+                await asyncio.sleep(backoff_time)
+                continue
+
+        print("Превышено максимальное количество попыток")
+        return None, None, 0, False
             
     async def get_working_proxy(self):
     #"""Получение первого рабочего прокси"""
@@ -631,24 +644,43 @@ class xenoichi(BaseBot):
        return f"{minutes:02d}:{seconds:02d}"
 
     async def convert_to_mp3(self, audio_file_path):
+    # Конвертация в MP3 с оптимизацией для SoundCloud
         try:
             if audio_file_path.endswith('.mp3'):
                 return audio_file_path
 
-            mp3_file_path = audio_file_path.replace(os.path.splitext(audio_file_path)[1], '.mp3')
+            mp3_file_path = audio_file_path.rsplit('.', 1)[0] + '.mp3'
+        
+        # Параметры для улучшения совместимости с радио-стримингом
+            ffmpeg_command = [
+                'ffmpeg',
+                '-i', audio_file_path,
+                '-codec:a', 'libmp3lame',
+                '-q:a', '2',  # Качество 0-9 (0 - наивысшее)
+                '-ar', '44100',
+                '-ac', '2',
+                '-b:a', '192k',
+                '-af', 'compand=0.3|1:0.5|0.5:-90/-50/-20/-0.2/0',  # Компрессия
+                '-vsync', '2',
+                mp3_file_path
+            ]
 
-            if os.path.exists(mp3_file_path):
-                print(f"MP3 file {mp3_file_path} already exists. Skipping conversion.")
-                return mp3_file_path
+            process = await asyncio.create_subprocess_exec(
+                *ffmpeg_command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+        
+            await process.communicate()
+        
+            if process.returncode != 0:
+                print("Ошибка конвертации в MP3")
+                return None
             
-            subprocess.run([
-                'ffmpeg', '-i', audio_file_path,
-                '-acodec', 'libmp3lame', '-ab', '192k', '-ar', '44100', '-ac', '2', mp3_file_path
-            ], check=True)
-
             return mp3_file_path
+        
         except Exception as e:
-            print(f"Error converting to MP3: {e}")
+            print(f"Ошибка конвертации: {e}")
             return None
 
     async def stream(self, mp3_file_path):
