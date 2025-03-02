@@ -557,8 +557,8 @@ class xenoichi(BaseBot):
     
     async def now_playing(self):
         if self.currently_playing_title:
-            current_song_owner = self.current_song['owner'] if self.current_song else "Unknown"
-            song_duration = self.current_song['duration'] if self.current_song else 0
+            current_song_owner = self.song_queue[0]['owner'] if self.song_queue else "Unknown"
+            song_duration = self.song_queue[0]['duration'] if self.song_queue else 0
             
             current_position = 0
             if hasattr(self, 'current_position_ms') and hasattr(self, 'start_time_ms') and isinstance(self.current_position_ms, (int, float)) and isinstance(self.start_time_ms, (int, float)):
@@ -604,10 +604,8 @@ class xenoichi(BaseBot):
                 
                 await self.stream(file_path)
 
-                    while self.ffmpeg_process and self.ffmpeg_process.returncode is None: #wait for stream to finish.
-                       await asyncio.sleep(0.1)
-                    if os.path.exists(opus_file_path):
-                        os.remove(opus_file_path)
+                    while self.ffmpeg_process and self.ffmpeg_process.returncode is None:
+                        await asyncio.sleep(0.1)
                     if os.path.exists(file_path):
                         os.remove(file_path)
                 
@@ -649,7 +647,7 @@ class xenoichi(BaseBot):
             mount_point = "/kraken-radioooo"
             username = "sadfsdafdsa_sdafasdfasd"
             password = "teenparalich0"
-            icecast_url = f"icecast://{username}:{password}@{icecast_server}:{icecast_port}{mount_point}"
+            icecast_url = f"http://{icecast_server}:{icecast_port}{mount_point}"
 
             if self.ffmpeg_process:
                 self.ffmpeg_process.terminate()
@@ -660,12 +658,14 @@ class xenoichi(BaseBot):
                 'ffmpeg',
                 '-re', 
                 '-i', opus_file_path,
-                '-c:a', 'copy',              # Без перекодирования
+                '-c:a', 'copy',
+                '-loglevel', 'debug',              # Без перекодирования
                 '-f', 'ogg',                 # Формат контейнера
                 '-content_type', 'audio/ogg',
                 '-reconnect', '1',
                 '-reconnect_streamed', '1',
                 '-reconnect_delay_max', '5',
+                '-headers', f'Authorization: Basic {base64.b64encode(f"{username}:{password}".encode()).decode()}'
                 icecast_url
             ]
             
