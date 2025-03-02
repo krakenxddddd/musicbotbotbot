@@ -604,10 +604,10 @@ class xenoichi(BaseBot):
                 
                 await self.stream(file_path)
 
-                    while self.ffmpeg_process and self.ffmpeg_process.returncode is None:
-                        await asyncio.sleep(0.1)
-                    if os.path.exists(file_path):
-                        os.remove(file_path)
+                while self.ffmpeg_process and self.ffmpeg_process.returncode is None:
+                    await asyncio.sleep(0.1)
+                if os.path.exists(file_path):
+                    os.remove(file_path)
                 
                 await self.save_queue()
 
