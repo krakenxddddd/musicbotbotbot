@@ -1,4 +1,4 @@
-
+import base64
 from highrise import *
 from highrise.models import *
 import yt_dlp as youtube_dl
