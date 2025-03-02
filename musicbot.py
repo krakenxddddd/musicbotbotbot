@@ -664,12 +664,15 @@ class xenoichi(BaseBot):
                 self.ffmpeg_process = None
 
             command = [
-                'ffmpeg', '-re', '-i', mp3_file_path,
-                '-f', 'ogg', '-acodec', 'libmp3lame', '-ab', '192k',
-                '-ar', '44100', '-ac', '2',
-                '-reconnect', '1', '-reconnect_streamed', '1',
-                '-reconnect_delay_max', '2',
-                '-progress', 'pipe:1',
+                'ffmpeg',
+                '-re', 
+                '-i', opus_file_path,
+                '-c:a', 'copy',              # Без перекодирования
+                '-f', 'ogg',                 # Формат контейнера
+                '-content_type', 'audio/ogg',
+                '-reconnect', '1',
+                '-reconnect_streamed', '1',
+                '-reconnect_delay_max', '5',
                 icecast_url
             ]
             
