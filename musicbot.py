@@ -602,25 +602,14 @@ class xenoichi(BaseBot):
                 await self.highrise.chat(message)
                 print(f"Playing: {song_title}")
                 
-                mp3_file_path = await self.convert_to_mp3(file_path)
-
-                if mp3_file_path:
-                    await self.stream(mp3_file_path)
+                await self.stream(file_path)
 
                     while self.ffmpeg_process and self.ffmpeg_process.returncode is None: #wait for stream to finish.
                        await asyncio.sleep(0.1)
-
-                    if os.path.exists(mp3_file_path):
-                        os.remove(mp3_file_path)
+                    if os.path.exists(opus_file_path):
+                        os.remove(opus_file_path)
                     if os.path.exists(file_path):
                         os.remove(file_path)
-                    if file_path.endswith('.opus'):
-                        try:
-                            await self.stream(file_path)  # Стримим OPUS напрямую
-                            os.remove(file_path)          # Удаляем только после успеха
-                        except Exception as e:
-                            print(f"Stream error: {e}")
-                            continue          # Удаляем только после успеха
                 
                 await self.save_queue()
 
@@ -648,12 +637,12 @@ class xenoichi(BaseBot):
        seconds = int(total_seconds % 60)
        return f"{minutes:02d}:{seconds:02d}"
 
-    async def stream(self, mp3_file_path):
+    async def stream(self, opus_file_path):
         """Streams the audio file to Icecast and tracks the current playback position."""
-        await asyncio.create_task(self._stream_to__thread(mp3_file_path))
+        await asyncio.create_task(self._stream_to__thread(opus_file_path))
 
 
-    async def _stream_to__thread(self, mp3_file_path):
+    async def _stream_to__thread(self, opus_file_path):
         try:
             icecast_server = "live.radioking.com"
             icecast_port = 80
