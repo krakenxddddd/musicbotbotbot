@@ -1,4 +1,4 @@
-import base64
+
 from highrise import *
 from highrise.models import *
 import yt_dlp as youtube_dl
@@ -68,11 +68,6 @@ if __name__ == "__main__":
 class xenoichi(BaseBot):
     def __init__(self):
         super().__init__()
-        self.proxy_list = [
-            'http://GTSfxm:UfcatG@46.232.12.76:8000'
-            ]
-        self.current_proxy = None
-        self.proxy_timeout = 10  # Таймаут в секундах
         self.conn = sqlite3.connect(db_path)
         self.cursor = self.conn.cursor()
         self.song_queue = []
@@ -128,7 +123,7 @@ class xenoichi(BaseBot):
         asyncio.create_task(self.repeat_jackpot_rules())
         await self.highrise.walk_to(Position(16.5, 0.0, 20.5))
 
-        print("KrakenDJ is armed and ready!")
+        print("Xenbot is armed and ready!")
         print("Bot is starting... cleaning up any active streams.")
 
         await self.stop_existing_stream()
@@ -141,7 +136,7 @@ class xenoichi(BaseBot):
         self.play_task = asyncio.create_task(self.playback_loop())
         self.ready.set()  # Set to true, now it is ready
         await asyncio.sleep(3)
-    
+
     async def on_user_join(self, user: User, position: Position) -> None:
         await self.highrise.send_whisper(user.id, f"\nСписок команд:\n\n/play [название песни] - Заказать песню по названию\n/linkplay [ссылка] - Заказать песню по ссылке Youtube или SoundCloud")
         await self.highrise.send_whisper(user.id, f"\n/skip - пропустить свой трек\n/bal - Проверить баланс\n/np - Узнать название трека\n/q - узнать очередь\n\nОтправь чаевые, чтобы пополнить баланс")
@@ -360,7 +355,7 @@ class xenoichi(BaseBot):
                 await self.highrise.chat(f"@{owner} ищу песню... Пожалуйста, подождите.")
 
                 try:
-                    file_path, title, duration, is_playlist = await self.download_soundcloud_audio(song_request, search_by_title)
+                    file_path, title, duration, is_playlist = await self.download_youtube_audio(song_request, search_by_title)
                 except Exception as e:
                     print(f"Error while downloading: {e}")
                     await self.highrise.chat(f"Произошла ошибка при скачивании трека, попробуйте позже. @{owner}")
@@ -439,126 +434,73 @@ class xenoichi(BaseBot):
             # Handle any error that occurs
             print(f"Произошла ошибка: {str(e)}")
 
-    async def download_soundcloud_audio(self, song_request, search_by_title=True):
-        max_retries = 3
-        proxy_rotation_count = 0
+    async def download_youtube_audio(self, song_request, search_by_title = True):
+
         proxy = 'http://GTSfxm:UfcatG@46.232.12.76:8000'
-    
-        for attempt in range(max_retries):
-            try:
-                ydl_opts = {
-                    'format': 'bestaudio[ext=opus]/bestaudio/best',  # Приоритет OPUS -> другие форматы
-                    'outtmpl': 'downloads/%(id)s.%(ext)s',           # Оригинальное расширение
-                    'keepvideo': True,                               # Не удалять исходник
-                    'postprocessors': [],                            # Отключить все конвертации
-                    'proxy': proxy,
-                    'nocheckcertificate': True,
-                    'source_address': '0.0.0.0',
-                    'socket_timeout': 45,
-                    'retries': 5,
-                    'http_headers': {
+        """Downloads audio from YouTube, trying link first, then search, and returns the file path and title."""
+        try:
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'outtmpl': 'downloads/%(id)s.%(ext)s',
+                'default_search': 'scsearch' if search_by_title else None,  # Условный поиск
+                'quiet': True,
+                'noplaylist': True,
+                'proxy': proxy,
+                'socket_timeout': 45,
+                'http_headers': {
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
                         'Accept-Encoding': 'gzip, deflate',
                         'Referer': 'https://soundcloud.com/'
-                    }
                 }
-            
-                with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-                    ydl.params.update({'geo_bypass': True})
-                    info = ydl.extract_info(
-                        song_request if not search_by_title else f"scsearch:{song_request}",
-                        download=True
-                    )
-                
-                
+            }
+
+            with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+                if search_by_title: #Searching by title
+                    info = ydl.extract_info(f"scsearch:{song_request}", download=False)
+                    if 'entries' in info:
+                        info = info['entries'][0]
+
+                    video_id = info['id']
+                    title = info['title']
+                    file_extension = info['ext']
+                    file_path = f"downloads/{video_id}.{file_extension}"
+                    
+                else: #Searching by link
+                    info = ydl.extract_info(song_request, download = False)
+
                     if 'entries' in info:
                         if len(info['entries']) > 1:
-                            return None, None, 0, True
+                           return None, None, 0, True
                         info = info['entries'][0]
-                
-                    required_fields = ['id', 'ext', 'title', 'duration', 'webpage_url']
-                    for field in required_fields:
-                        if field not in info:
-                            raise ValueError(f"Отсутствует обязательное поле: {field}")
-                
-                    file_path = f"downloads/{info['id']}.{info['ext']}"
-                
-                    if os.path.exists(file_path):
-                        print(f"Файл уже существует: {file_path}")
-                        return file_path, info['title'], info['duration'], False
-                
-                    print(f"Начинаем скачивание: {info['webpage_url']}")
-                    ydl.download([info['webpage_url']])
-                
-                    if not os.path.exists(file_path):
-                        raise FileNotFoundError(f"Файл не был скачан: {file_path}")
-                
-                    return file_path, info['title'], info['duration'], False
 
-            except youtube_dl.utils.DownloadError as e:
-                print(f"[Попытка {attempt+1}] Ошибка скачивания: {str(e)}")
-                error_message = str(e).lower()
-            
-                if any(err in error_message for err in ['ext', 'format']):
-                    print("Обнаружена ошибка формата, изменяем параметры...")
-                    ydl_opts['postprocessors'][0]['preferredcodec'] = 'm4a'
-                    continue
+                    video_id = info['id']
+                    title = info['title']
+                    file_extension = info['ext']
+                    file_path = f"downloads/{video_id}.{file_extension}"
 
-            except Exception as e:
-                print(f"[Попытка {attempt+1}] Критическая ошибка: {type(e).__name__} - {str(e)}")
-            
-                if len(self.proxy_list) > 1:
-                    await self.rotate_proxy()
-                    proxy_rotation_count += 1
-            
-                backoff_time = min(2 ** attempt, 10)
-                print(f"Повтор через {backoff_time} сек...")
-                await asyncio.sleep(backoff_time)
-                continue
+                if os.path.exists(file_path):
+                    print(f"The file '{file_path}' already exists, skipping download.")
+                    return file_path, title, int(info['duration']), False # Changed to int()
+                
+                info = ydl.extract_info(song_request, download=True)
+                if 'entries' in info:
+                    if len(info['entries']) > 1:
+                        return None, None, 0, True
+                    info = info['entries'][0]
 
-        print("Превышено максимальное количество попыток")
-        return None, None, 0, False
-            
-    async def get_working_proxy(self):
-    #"""Получение первого рабочего прокси"""
-        if not self.proxy_list:
-            return None
-        
-    # Проверка последнего рабочего прокси
-        if self.current_proxy:
-            return self.current_proxy
-        
-    # Тестируем все прокси по очереди
-        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
-            for proxy in self.proxy_list:
-                try:
-                    async with session.get(
-                        'https://api-v2.soundcloud.com/',
-                        proxy=proxy,
-                        timeout=15
-                    ) as resp:
-                        if resp.status == 200:
-                            self.current_proxy = proxy
-                            return proxy
-                except Exception:
-                    continue
-        return None
+                video_id = info['id']
+                file_extension = info['ext']
+                file_path = f"downloads/{video_id}.{file_extension}"
+                print(f"Downloaded: {file_path} with title: {title}")
+                return file_path, title, int(info['duration']), False # Changed to int()
+        except Exception as e:
+              print(f"Error downloading the song: {e}")
+              return None, None, 0, False
 
-    async def rotate_proxy(self):
-    #"""Улучшенная ротация с сохранением рабочего прокси"""
-        if len(self.proxy_list) < 2:
-            return
-        
-        current_index = self.proxy_list.index(self.current_proxy) if self.current_proxy else 0
-        new_index = (current_index + 1) % len(self.proxy_list)
-        self.proxy_list = self.proxy_list[new_index:] + self.proxy_list[:new_index]
-        self.current_proxy = None
-
-    
     async def now_playing(self):
         if self.currently_playing_title:
-            current_song_owner = self.song_queue[0]['owner'] if self.song_queue else "Unknown"
-            song_duration = self.song_queue[0]['duration'] if self.song_queue else 0
+            current_song_owner = self.current_song['owner'] if self.current_song else "Unknown"
+            song_duration = self.current_song['duration'] if self.current_song else 0
             
             current_position = 0
             if hasattr(self, 'current_position_ms') and hasattr(self, 'start_time_ms') and isinstance(self.current_position_ms, (int, float)) and isinstance(self.start_time_ms, (int, float)):
@@ -602,12 +544,18 @@ class xenoichi(BaseBot):
                 await self.highrise.chat(message)
                 print(f"Playing: {song_title}")
                 
-                await self.stream(file_path)
+                mp3_file_path = await self.convert_to_mp3(file_path)
 
-                while self.ffmpeg_process and self.ffmpeg_process.returncode is None:
-                    await asyncio.sleep(0.1)
-                if os.path.exists(file_path):
-                    os.remove(file_path)
+                if mp3_file_path:
+                    await self.stream(mp3_file_path)
+
+                    while self.ffmpeg_process and self.ffmpeg_process.returncode is None: #wait for stream to finish.
+                       await asyncio.sleep(0.1)
+
+                    if os.path.exists(mp3_file_path):
+                        os.remove(mp3_file_path)
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
                 
                 await self.save_queue()
 
@@ -635,19 +583,40 @@ class xenoichi(BaseBot):
        seconds = int(total_seconds % 60)
        return f"{minutes:02d}:{seconds:02d}"
 
-    async def stream(self, opus_file_path):
+    async def convert_to_mp3(self, audio_file_path):
+        try:
+            if audio_file_path.endswith('.mp3'):
+                return audio_file_path
+
+            mp3_file_path = audio_file_path.replace(os.path.splitext(audio_file_path)[1], '.mp3')
+
+            if os.path.exists(mp3_file_path):
+                print(f"MP3 file {mp3_file_path} already exists. Skipping conversion.")
+                return mp3_file_path
+            
+            subprocess.run([
+                'ffmpeg', '-i', audio_file_path,
+                '-acodec', 'libmp3lame', '-ab', '192k', '-ar', '44100', '-ac', '2', mp3_file_path
+            ], check=True)
+
+            return mp3_file_path
+        except Exception as e:
+            print(f"Error converting to MP3: {e}")
+            return None
+
+    async def stream(self, mp3_file_path):
         """Streams the audio file to Icecast and tracks the current playback position."""
-        await asyncio.create_task(self._stream_to__thread(opus_file_path))
+        await asyncio.create_task(self._stream_to__thread(mp3_file_path))
 
 
-    async def _stream_to__thread(self, opus_file_path):
+    async def _stream_to__thread(self, mp3_file_path):
         try:
             icecast_server = "live.radioking.com"
             icecast_port = 80
             mount_point = "/kraken-radioooo"
             username = "sadfsdafdsa_sdafasdfasd"
             password = "teenparalich0"
-            icecast_url = f"http://{icecast_server}:{icecast_port}{mount_point}"
+            icecast_url = f"icecast://{username}:{password}@{icecast_server}:{icecast_port}{mount_point}"
 
             if self.ffmpeg_process:
                 self.ffmpeg_process.terminate()
@@ -655,17 +624,12 @@ class xenoichi(BaseBot):
                 self.ffmpeg_process = None
 
             command = [
-                'ffmpeg',
-                '-re', 
-                '-i', opus_file_path,
-                '-c:a', 'copy',
-                '-loglevel', 'debug',              # Без перекодирования
-                '-f', 'ogg',                 # Формат контейнера
-                '-content_type', 'audio/ogg',
-                '-reconnect', '1',
-                '-reconnect_streamed', '1',
-                '-reconnect_delay_max', '5',
-                '-headers', f'Authorization: Basic {base64.b64encode(f"{username}:{password}".encode()).decode()}',
+                'ffmpeg', '-re', '-i', mp3_file_path,
+                '-f', 'mp3', '-acodec', 'libmp3lame', '-ab', '192k',
+                '-ar', '44100', '-ac', '2',
+                '-reconnect', '1', '-reconnect_streamed', '1',
+                '-reconnect_delay_max', '2',
+                '-progress', 'pipe:1',
                 icecast_url
             ]
             
@@ -702,9 +666,6 @@ class xenoichi(BaseBot):
 
         except Exception as e:
             print(f"Error streaming to Radioking: {e}")
-            error_msg = await self.ffmpeg_process.stderr.read()
-            print(f"FFMPEG ERROR: {error_msg.decode()}")
-            await self.highrise.chat("Ошибка стрима! Проверьте логи.")
         finally:
             if self.ffmpeg_process:
                 if self.ffmpeg_process.returncode is None:
