@@ -447,8 +447,8 @@ class xenoichi(BaseBot):
         for attempt in range(max_retries):
             try:
                 ydl_opts = {
-                    'format': 'bestaudio/best',
-                    'outtmpl': 'downloads/%(id)s.%(ext)s',
+                    'format': 'bestaudio/best[ext=mp3]',  # Явно указываем MP3
+                    'outtmpl': 'downloads/%(id)s.mp3',    # Сохраняем сразу как MP3
                     'proxy': proxy,
                     'nocheckcertificate': True,
                     'source_address': '0.0.0.0',
